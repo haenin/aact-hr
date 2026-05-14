@@ -1,12 +1,9 @@
 package com.aact.overtime.service;
 
-import com.aact.overtime.entity.ApprovalLine;
 import com.aact.overtime.entity.DepartmentSummary;
 import com.aact.overtime.entity.OvertimeRecord;
-import com.aact.overtime.repository.ApprovalLineRepository;
 import com.aact.overtime.repository.DepartmentSummaryRepository;
 import com.aact.overtime.repository.OvertimeRecordRepository;
-import com.aact.overtime.type.ApproverRole;
 import lombok.RequiredArgsConstructor;
 import org.apache.poi.ss.usermodel.*;
 import org.apache.poi.ss.util.CellRangeAddress;
@@ -21,8 +18,11 @@ import java.util.stream.Collectors;
  * DB 데이터 → 시간외근무수당 신청서 엑셀 생성
  *
  * 시트 구성:
- *  ├── {부서명}표지  (부서별 집계표 + 결재란) - DepartmentSummary + ApprovalLine
- *  └── {부서명}({월}) (개인별 세부내역) - OvertimeRecord
+ *  ├── {부서명}표지  (부서별 집계표 + 결재란)
+ *  └── {부서명}({월}) (개인별 세부내역)
+ *
+ * 결재란은 approvers 리스트로 동적 처리
+ * ex) ["담당", "과장", "상무", "부사장"]
  */
 @Component
 @RequiredArgsConstructor
@@ -30,52 +30,40 @@ public class ExcelSheetGenerator {
 
     private final OvertimeRecordRepository overtimeRecordRepository;
     private final DepartmentSummaryRepository departmentSummaryRepository;
-    private final ApprovalLineRepository approvalLineRepository;
 
     /**
      * 연월 기준으로 전체 엑셀 생성
+     *
      * @param applyYearMonth "2026-04"
+     * @param approvers      결재란 직급 목록 ex) ["담당", "과장", "상무", "부사장"] (동적)
      * @return 엑셀 파일 byte[]
      */
-    public byte[] generate(String applyYearMonth) throws Exception {
+    public byte[] generate(String applyYearMonth, List<String> approvers) throws Exception {
         try (XSSFWorkbook wb = new XSSFWorkbook();
              ByteArrayOutputStream out = new ByteArrayOutputStream()) {
 
-            // DB에서 데이터 조회
             List<DepartmentSummary> summaries = departmentSummaryRepository
                     .findByApplyYearMonthOrderByDepartmentAsc(applyYearMonth);
             List<OvertimeRecord> records = overtimeRecordRepository
                     .findByApplyYearMonthOrderByDepartmentAscEmployeeNameAsc(applyYearMonth);
 
-            // 결재라인 DB에서 동적으로 조회
-            List<ApprovalLine> allApprovals = approvalLineRepository
-                    .findByApplyYearMonth(applyYearMonth);
-
-            // 부서별 그룹핑
             Map<String, List<DepartmentSummary>> summaryByDept = summaries.stream()
                     .collect(Collectors.groupingBy(DepartmentSummary::getDepartment));
             Map<String, List<OvertimeRecord>> recordByDept = records.stream()
                     .collect(Collectors.groupingBy(OvertimeRecord::getDepartment));
-            Map<String, List<ApprovalLine>> approvalByDept = allApprovals.stream()
-                    .collect(Collectors.groupingBy(ApprovalLine::getDepartment));
 
-            // 부서 목록 (순서 고정)
             List<String> departments = summaries.stream()
                     .map(DepartmentSummary::getDepartment)
                     .distinct()
                     .collect(Collectors.toList());
 
-            // 공통 스타일
             StyleSet styles = new StyleSet(wb);
 
-            // 부서별 시트 생성
             for (String dept : departments) {
-                // 1. 표지 시트 (결재라인 동적으로 전달)
                 createCoverSheet(wb, styles, applyYearMonth, dept,
                         summaryByDept.getOrDefault(dept, Collections.emptyList()),
-                        approvalByDept.getOrDefault(dept, Collections.emptyList()));
+                        approvers != null ? approvers : Collections.emptyList());
 
-                // 2. 세부내역 시트
                 List<OvertimeRecord> deptRecords = recordByDept.getOrDefault(dept, Collections.emptyList());
                 if (!deptRecords.isEmpty()) {
                     createDetailSheet(wb, styles, applyYearMonth, dept, deptRecords);
@@ -88,12 +76,12 @@ public class ExcelSheetGenerator {
     }
 
     // ─────────────────────────────────────────────────────────
-    // 표지 시트 생성
+    // 표지 시트
     // ─────────────────────────────────────────────────────────
     private void createCoverSheet(XSSFWorkbook wb, StyleSet styles,
-                                   String applyYearMonth, String dept,
-                                   List<DepartmentSummary> summaries,
-                                   List<ApprovalLine> approvals) {
+                                  String applyYearMonth, String dept,
+                                  List<DepartmentSummary> summaries,
+                                  List<String> approvers) {
         String month = applyYearMonth.substring(5);
         XSSFSheet sheet = wb.createSheet(dept + "표지");
 
@@ -104,35 +92,24 @@ public class ExcelSheetGenerator {
         title.setCellValue("시간 외 근무수당 신청서(" + month + "월)");
         title.setCellStyle(styles.title);
 
-        // ── 결재란 (DB에서 동적으로 그리기)
-        // ApprovalLine 목록을 role 순서대로 정렬 (MANAGER→CHIEF→DIRECTOR→VP)
-        List<ApprovalLine> sortedApprovals = approvals.stream()
-                .sorted(Comparator.comparing(ApprovalLine::getRole))
-                .collect(Collectors.toList());
+        // ── 결재란 (동적 - List<String> approvers)
+        if (!approvers.isEmpty()) {
+            Row approvalHeaderRow = sheet.createRow(3);
+            setCell(approvalHeaderRow, 16, "결재", styles.header);
 
-        if (!sortedApprovals.isEmpty()) {
-            // "결재" 라벨
-            Row approvalLabelRow = sheet.createRow(3);
-            setCell(approvalLabelRow, 16, "결재", styles.header);
-
-            // 결재자 수만큼 동적으로 헤더 + 서명칸 생성
             int startCol = 17;
-            int colSpan = 3; // 결재자 1명당 3칸
+            int colSpan  = 3;
 
-            for (int i = 0; i < sortedApprovals.size(); i++) {
-                ApprovalLine al = sortedApprovals.get(i);
+            for (int i = 0; i < approvers.size(); i++) {
                 int col = startCol + (i * colSpan);
-
-                // 헤더 병합
                 sheet.addMergedRegion(new CellRangeAddress(3, 3, col, col + colSpan - 1));
-                setCell(approvalLabelRow, col, roleLabel(al.getRole()), styles.header);
+                setCell(approvalHeaderRow, col, approvers.get(i), styles.header);
 
-                // 서명칸 (row 4~7) - 이름 있으면 표시
+                // 서명칸 (row 4~7)
                 for (int r = 4; r <= 7; r++) {
                     Row sigRow = getOrCreateRow(sheet, r);
                     sheet.addMergedRegion(new CellRangeAddress(r, r, col, col + colSpan - 1));
-                    String val = (r == 4 && al.getApproverName() != null) ? al.getApproverName() : "";
-                    setCell(sigRow, col, val, styles.data);
+                    sigRow.createCell(col).setCellStyle(styles.data);
                 }
             }
         }
@@ -162,7 +139,7 @@ public class ExcelSheetGenerator {
             setCell(r10, sc + 2, "휴일", styles.header);
         }
 
-        // ── row 11~: 데이터 행
+        // ── 데이터 행
         int rowIdx = 11;
         double totalPrevExt = 0, totalPrevNight = 0, totalPrevHol = 0;
         double totalCurrExt = 0, totalCurrNight = 0, totalCurrHol = 0;
@@ -189,7 +166,7 @@ public class ExcelSheetGenerator {
             totalCurrHol   += nvl(s.getCurrHolidayHours());
         }
 
-        // ── 총 합계 행
+        // ── 총 합계
         Row totalRow = sheet.createRow(rowIdx++);
         setCell(totalRow, 0, "총 합계", styles.header);
         setNumCell(totalRow, 1, totalPrevExt,   styles.header);
@@ -225,20 +202,18 @@ public class ExcelSheetGenerator {
     }
 
     // ─────────────────────────────────────────────────────────
-    // 세부내역 시트 생성
+    // 세부내역 시트
     // ─────────────────────────────────────────────────────────
     private void createDetailSheet(XSSFWorkbook wb, StyleSet styles,
-                                    String applyYearMonth, String dept,
-                                    List<OvertimeRecord> records) {
+                                   String applyYearMonth, String dept,
+                                   List<OvertimeRecord> records) {
         String month = applyYearMonth.substring(5);
         XSSFSheet sheet = wb.createSheet(dept + "(" + month + "월)");
 
-        // ── row 0: 제목
         Row r0 = sheet.createRow(0);
         sheet.addMergedRegion(new CellRangeAddress(0, 0, 0, 12));
         r0.createCell(0).setCellValue(month + "월 시간 외 근로시간 개인별 세부내역 (" + dept + ")");
 
-        // ── row 2: 헤더 1행
         Row r2 = sheet.createRow(2);
         sheet.addMergedRegion(new CellRangeAddress(2, 3, 0, 0));
         sheet.addMergedRegion(new CellRangeAddress(2, 3, 1, 1));
@@ -249,24 +224,22 @@ public class ExcelSheetGenerator {
         sheet.addMergedRegion(new CellRangeAddress(2, 3, 8, 8));
         sheet.addMergedRegion(new CellRangeAddress(2, 3, 9, 9));
         sheet.addMergedRegion(new CellRangeAddress(2, 3, 10, 10));
-        setCell(r2, 0,  "부서",         styles.header);
-        setCell(r2, 1,  "성명",         styles.header);
-        setCell(r2, 2,  "일자",         styles.header);
-        setCell(r2, 3,  "예정근무",     styles.header);
-        setCell(r2, 5,  "실근무(지문)", styles.header);
-        setCell(r2, 7,  "연장",         styles.header);
-        setCell(r2, 8,  "야간",         styles.header);
-        setCell(r2, 9,  "휴일",         styles.header);
-        setCell(r2, 10, "휴일연장",     styles.header);
+        setCell(r2, 0,  "부서",          styles.header);
+        setCell(r2, 1,  "성명",          styles.header);
+        setCell(r2, 2,  "일자",          styles.header);
+        setCell(r2, 3,  "예정근무",      styles.header);
+        setCell(r2, 5,  "실근무(지문)",  styles.header);
+        setCell(r2, 7,  "연장",          styles.header);
+        setCell(r2, 8,  "야간",          styles.header);
+        setCell(r2, 9,  "휴일",          styles.header);
+        setCell(r2, 10, "휴일연장",      styles.header);
 
-        // ── row 3: 헤더 2행
         Row r3 = sheet.createRow(3);
         setCell(r3, 3, "출근", styles.header);
         setCell(r3, 4, "퇴근", styles.header);
         setCell(r3, 5, "출근", styles.header);
         setCell(r3, 6, "퇴근", styles.header);
 
-        // ── row 4~: 직원별 데이터
         Map<String, List<OvertimeRecord>> byEmployee = new LinkedHashMap<>();
         for (OvertimeRecord r : records) {
             byEmployee.computeIfAbsent(r.getEmployeeName(), k -> new ArrayList<>()).add(r);
@@ -288,7 +261,7 @@ public class ExcelSheetGenerator {
                     setCell(dr, 1, empName, styles.data);
                     firstRow = false;
                 }
-                setCell(dr, 2, rec.getWorkDate() != null ? rec.getWorkDate().toString() : "", styles.data);
+                setCell(dr, 2, rec.getWorkDate()       != null ? rec.getWorkDate().toString()       : "", styles.data);
                 setCell(dr, 3, rec.getScheduledStart() != null ? rec.getScheduledStart().toString() : "", styles.data);
                 setCell(dr, 4, rec.getScheduledEnd()   != null ? rec.getScheduledEnd().toString()   : "", styles.data);
                 setCell(dr, 5, rec.getActualStart()    != null ? rec.getActualStart().toString()    : "", styles.data);
@@ -304,7 +277,6 @@ public class ExcelSheetGenerator {
                 subHolExt += nvl(rec.getHolidayExtensionHours());
             }
 
-            // 소계 행
             Row subRow = sheet.createRow(rowIdx++);
             setCell(subRow, 1, "소계", styles.header);
             setNumCell(subRow, 7,  subExt,    styles.header);
@@ -318,7 +290,6 @@ public class ExcelSheetGenerator {
             grandHolExt += subHolExt;
         }
 
-        // 합계 행
         Row totalRow = sheet.createRow(rowIdx);
         setCell(totalRow, 1, "합계", styles.header);
         setNumCell(totalRow, 7,  grandExt,    styles.header);
@@ -328,43 +299,25 @@ public class ExcelSheetGenerator {
     }
 
     // ─────────────────────────────────────────────────────────
-    // ApproverRole → 표시 라벨
-    // ─────────────────────────────────────────────────────────
-    private String roleLabel(ApproverRole role) {
-        return switch (role) {
-            case MANAGER  -> "담당";
-            case CHIEF    -> "과장";
-            case DIRECTOR -> "상무";
-            case VP       -> "부사장";
-        };
-    }
-
-    // ─────────────────────────────────────────────────────────
-    // 스타일 세트
+    // 스타일
     // ─────────────────────────────────────────────────────────
     private static class StyleSet {
-        final CellStyle title;
-        final CellStyle header;
-        final CellStyle data;
+        final CellStyle title, header, data;
 
         StyleSet(XSSFWorkbook wb) {
             title = wb.createCellStyle();
-            XSSFFont titleFont = wb.createFont();
-            titleFont.setBold(true);
-            titleFont.setFontHeightInPoints((short) 14);
-            title.setFont(titleFont);
+            XSSFFont tf = wb.createFont();
+            tf.setBold(true); tf.setFontHeightInPoints((short) 14);
+            title.setFont(tf);
             title.setAlignment(HorizontalAlignment.CENTER);
 
             header = wb.createCellStyle();
-            XSSFFont headerFont = wb.createFont();
-            headerFont.setBold(true);
-            header.setFont(headerFont);
+            XSSFFont hf = wb.createFont();
+            hf.setBold(true);
+            header.setFont(hf);
             header.setAlignment(HorizontalAlignment.CENTER);
             header.setVerticalAlignment(VerticalAlignment.CENTER);
-            header.setBorderTop(BorderStyle.THIN);
-            header.setBorderBottom(BorderStyle.THIN);
-            header.setBorderLeft(BorderStyle.THIN);
-            header.setBorderRight(BorderStyle.THIN);
+            setBorder(header);
             ((XSSFCellStyle) header).setFillForegroundColor(
                     new XSSFColor(new byte[]{(byte)217, (byte)217, (byte)217}, null));
             header.setFillPattern(FillPatternType.SOLID_FOREGROUND);
@@ -372,10 +325,14 @@ public class ExcelSheetGenerator {
             data = wb.createCellStyle();
             data.setAlignment(HorizontalAlignment.CENTER);
             data.setVerticalAlignment(VerticalAlignment.CENTER);
-            data.setBorderTop(BorderStyle.THIN);
-            data.setBorderBottom(BorderStyle.THIN);
-            data.setBorderLeft(BorderStyle.THIN);
-            data.setBorderRight(BorderStyle.THIN);
+            setBorder(data);
+        }
+
+        private void setBorder(CellStyle s) {
+            s.setBorderTop(BorderStyle.THIN);
+            s.setBorderBottom(BorderStyle.THIN);
+            s.setBorderLeft(BorderStyle.THIN);
+            s.setBorderRight(BorderStyle.THIN);
         }
     }
 
