@@ -1,12 +1,14 @@
 package com.aact.overtime.service;
 
 import com.aact.overtime.dto.SheetDto;
+import com.aact.overtime.dto.SheetType;
 import com.aact.overtime.service.ExcelSheetParser;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.util.List;
+import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
@@ -31,5 +33,35 @@ public class ExcelSheetService {
         } catch (Exception e) {
             throw new RuntimeException("엑셀 파싱 실패: " + e.getMessage(), e);
         }
+    }
+
+    /**
+     * 표지 시트만 반환 (isCover = true)
+     * → 부서별 집계표 (전월/당월/증감)
+     */
+    public List<SheetDto.SheetWrapper<?>> parseCoverSheets(MultipartFile file) {
+        return parseExcel(file).stream()
+                .filter(SheetDto.SheetWrapper::isCover)
+                .collect(Collectors.toList());
+    }
+
+    /**
+     * 세부내역 시트만 반환 (isCover = false)
+     * → 개인별 일자별 근무내역
+     */
+    public List<SheetDto.SheetWrapper<?>> parseDetailSheets(MultipartFile file) {
+        return parseExcel(file).stream()
+                .filter(sheet -> !sheet.isCover())
+                .collect(Collectors.toList());
+    }
+
+    /**
+     * 특정 부서 타입 시트만 반환
+     * ex) SheetType.조업부 → 조업부표지 + 조업부 세부내역
+     */
+    public List<SheetDto.SheetWrapper<?>> parseByType(MultipartFile file, SheetType type) {
+        return parseExcel(file).stream()
+                .filter(sheet -> sheet.getType() == type)
+                .collect(Collectors.toList());
     }
 }
