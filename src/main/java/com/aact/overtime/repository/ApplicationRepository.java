@@ -7,7 +7,7 @@ import org.springframework.data.repository.query.Param;
 
 import java.util.List;
 
-public interface OvertimePayApplicationRepository extends JpaRepository<OvertimePayApplication, Long> {
+public interface ApplicationRepository extends JpaRepository<OvertimePayApplication, Long> {
 
     /** 연월 + 부서 전체 (순번 순) */
     List<OvertimePayApplication> findByApplyYearMonthAndDepartmentOrderByNoAsc(

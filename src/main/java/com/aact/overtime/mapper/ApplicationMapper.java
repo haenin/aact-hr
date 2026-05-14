@@ -1,13 +1,13 @@
 package com.aact.overtime.mapper;
 
-import com.aact.overtime.dto.OvertimePayApplicationDto;
+import com.aact.overtime.dto.ApplicationDto;
 import com.aact.overtime.entity.OvertimePayApplication;
 import org.springframework.stereotype.Component;
 
 @Component
-public class OvertimePayApplicationMapper {
+public class ApplicationMapper {
 
-    public OvertimePayApplication toEntity(OvertimePayApplicationDto.Request dto) {
+    public OvertimePayApplication toEntity(ApplicationDto.Request dto) {
         return OvertimePayApplication.builder()
                 .applyYearMonth(dto.getApplyYearMonth())
                 .department(dto.getDepartment())
@@ -23,8 +23,8 @@ public class OvertimePayApplicationMapper {
                 .build();
     }
 
-    public OvertimePayApplicationDto.Response toResponse(OvertimePayApplication entity) {
-        return OvertimePayApplicationDto.Response.builder()
+    public ApplicationDto.Response toResponse(OvertimePayApplication entity) {
+        return ApplicationDto.Response.builder()
                 .id(entity.getId())
                 .applyYearMonth(entity.getApplyYearMonth())
                 .department(entity.getDepartment())

@@ -1,8 +1,8 @@
 package com.aact.overtime.service;
 
-import com.aact.overtime.dto.OvertimePayApplicationDto;
+import com.aact.overtime.dto.ApplicationDto;
 import com.aact.overtime.entity.OvertimePayApplication;
-import com.aact.overtime.repository.OvertimePayApplicationRepository;
+import com.aact.overtime.repository.ApplicationRepository;
 import lombok.RequiredArgsConstructor;
 import org.apache.poi.ss.usermodel.*;
 import org.apache.poi.ss.util.CellRangeAddress;
@@ -25,13 +25,13 @@ import java.util.List;
  */
 @Component
 @RequiredArgsConstructor
-public class OvertimePayApplicationExcelGenerator {
+public class ApplicationExcelGenerator {
 
-    private final OvertimePayApplicationRepository overtimeApplicationRepository;
+    private final ApplicationRepository overtimeApplicationRepository;
 
     private static final int MAX_ROWS = 28; // 테이블 최대 행 수
 
-    public byte[] generate(OvertimePayApplicationDto.ExcelRequest request) throws Exception {
+    public byte[] generate(ApplicationDto.ExcelRequest request) throws Exception {
         String yearMonth = request.getApplyYearMonth();
         String dept      = request.getDepartment();
         int year  = Integer.parseInt(yearMonth.substring(0, 4));
@@ -211,11 +211,11 @@ public class OvertimePayApplicationExcelGenerator {
 
     // ── 서명란 (동적)
     private void createSignerRows(XSSFSheet sheet, StyleSet styles,
-                                   List<OvertimePayApplicationDto.Signer> signers, int rowIdx) {
+                                  List<ApplicationDto.Signer> signers, int rowIdx) {
         if (signers == null || signers.isEmpty()) return;
 
         rowIdx += 2; // 여백
-        for (OvertimePayApplicationDto.Signer signer : signers) {
+        for (ApplicationDto.Signer signer : signers) {
             Row r = sheet.createRow(rowIdx++);
             r.setHeightInPoints(25);
             sheet.addMergedRegion(new CellRangeAddress(rowIdx - 1, rowIdx - 1, 5, 6));

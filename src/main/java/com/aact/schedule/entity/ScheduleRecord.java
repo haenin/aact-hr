@@ -22,10 +22,10 @@ public class ScheduleRecord {
     private Long id;
 
     @Column(nullable = false, length = 7)
-    private String applyYearMonth;      // "2026-03"
+    private String applyYearMonth;      // "2026-05"
 
     @Column(nullable = false, length = 50)
-    private String department;          // 팀명 ex) "레약 & 교육품질팀"
+    private String department;          // 팀명 ex) "계약 & 교육품질팀"
 
     @Column(nullable = false, length = 50)
     private String flightCode;          // 편명 ex) "AA, 7L"

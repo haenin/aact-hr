@@ -3,7 +3,7 @@ package com.aact.overtime.dto;
 import lombok.*;
 import java.util.List;
 
-public class OvertimePayApplicationDto {
+public class ApplicationDto {
 
     @Getter @Setter @NoArgsConstructor @AllArgsConstructor @Builder
     public static class Request {

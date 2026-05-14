@@ -1,6 +1,6 @@
 package com.aact.overtime.service;
 
-import com.aact.overtime.dto.SheetDto;
+import com.aact.overtime.dto.ExcelSheetDto;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
@@ -17,7 +17,7 @@ public class ExcelSheetService {
     /**
      * 엑셀 파싱 → 시트 배열 반환
      */
-    public List<SheetDto.SheetWrapper<?>> parseExcel(MultipartFile file) {
+    public List<ExcelSheetDto.SheetWrapper<?>> parseExcel(MultipartFile file) {
         try {
             return excelSheetParser.parse(file.getInputStream());
         } catch (Exception e) {

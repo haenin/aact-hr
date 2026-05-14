@@ -1,7 +1,7 @@
 package com.aact.overtime.service;
 
-import com.aact.overtime.dto.SheetDto;
-import com.aact.overtime.dto.SheetType;
+import com.aact.overtime.dto.ExcelSheetDto;
+import com.aact.overtime.dto.ExcelSheetType;
 import org.apache.poi.ss.usermodel.*;
 import org.apache.poi.xssf.usermodel.XSSFWorkbook;
 import org.springframework.stereotype.Component;
@@ -25,8 +25,8 @@ public class ExcelSheetParser {
      * 엑셀 파일 전체를 시트 배열로 변환
      */
     @SuppressWarnings("unchecked")
-    public List<SheetDto.SheetWrapper<?>> parse(InputStream is) throws Exception {
-        List<SheetDto.SheetWrapper<?>> result = new ArrayList<>();
+    public List<ExcelSheetDto.SheetWrapper<?>> parse(InputStream is) throws Exception {
+        List<ExcelSheetDto.SheetWrapper<?>> result = new ArrayList<>();
 
         try (Workbook wb = new XSSFWorkbook(is)) {
             for (int i = 0; i < wb.getNumberOfSheets(); i++) {
@@ -34,19 +34,19 @@ public class ExcelSheetParser {
                 String sheetName = sheet.getSheetName();
 
                 boolean isCover = sheetName.contains("표지");
-                SheetType type  = SheetType.from(sheetName);
+                ExcelSheetType type  = ExcelSheetType.from(sheetName);
 
                 if (isCover) {
-                    List<SheetDto.CoverRow> data = parseCoverSheet(sheet);
-                    result.add(SheetDto.SheetWrapper.<SheetDto.CoverRow>builder()
+                    List<ExcelSheetDto.CoverRow> data = parseCoverSheet(sheet);
+                    result.add(ExcelSheetDto.SheetWrapper.<ExcelSheetDto.CoverRow>builder()
                             .sheetName(sheetName)
                             .isCover(true)
                             .type(type)
                             .data(data)
                             .build());
                 } else {
-                    List<SheetDto.DetailRow> data = parseDetailSheet(sheet);
-                    result.add(SheetDto.SheetWrapper.<SheetDto.DetailRow>builder()
+                    List<ExcelSheetDto.DetailRow> data = parseDetailSheet(sheet);
+                    result.add(ExcelSheetDto.SheetWrapper.<ExcelSheetDto.DetailRow>builder()
                             .sheetName(sheetName)
                             .isCover(false)
                             .type(type)
@@ -63,8 +63,8 @@ public class ExcelSheetParser {
     // 부서명 / 전월(연장·야간·휴일) / 당월(연장·야간·휴일) / 증감 / 사유
     // 실제 데이터 행: "총 합계" 위의 부서명 행들
     // ────────────────────────────────────────────────────────────
-    private List<SheetDto.CoverRow> parseCoverSheet(Sheet sheet) {
-        List<SheetDto.CoverRow> rows = new ArrayList<>();
+    private List<ExcelSheetDto.CoverRow> parseCoverSheet(Sheet sheet) {
+        List<ExcelSheetDto.CoverRow> rows = new ArrayList<>();
         boolean dataStarted = false;
 
         for (Row row : sheet) {
@@ -84,7 +84,7 @@ public class ExcelSheetParser {
             // 헤더 보조행 ("연장","야간","휴일" 반복) 스킵
             if ("연장".equals(firstCell) || "야간".equals(firstCell) || "휴일".equals(firstCell)) continue;
 
-            rows.add(SheetDto.CoverRow.builder()
+            rows.add(ExcelSheetDto.CoverRow.builder()
                     .departmentName(firstCell)
                     .prevExtension(numVal(row.getCell(1)))
                     .prevNight(numVal(row.getCell(2)))
@@ -106,8 +106,8 @@ public class ExcelSheetParser {
     // 세부내역 시트 파싱
     // 부서 / 성명 / 일자 / 예정출근·퇴근 / 실출근·퇴근 / 연장·야간·휴일·휴일연장
     // ────────────────────────────────────────────────────────────
-    private List<SheetDto.DetailRow> parseDetailSheet(Sheet sheet) {
-        List<SheetDto.DetailRow> rows = new ArrayList<>();
+    private List<ExcelSheetDto.DetailRow> parseDetailSheet(Sheet sheet) {
+        List<ExcelSheetDto.DetailRow> rows = new ArrayList<>();
         boolean dataStarted = false;
 
         String currentDept = null;
@@ -130,7 +130,7 @@ public class ExcelSheetParser {
 
             // 소계 행
             if ("소계".equals(col1)) {
-                rows.add(SheetDto.DetailRow.builder()
+                rows.add(ExcelSheetDto.DetailRow.builder()
                         .department(currentDept)
                         .employeeName(currentName)
                         .isSubtotal(true)
@@ -149,7 +149,7 @@ public class ExcelSheetParser {
             // 일자가 없으면 빈 행
             if (col2 == null || col2.isBlank()) continue;
 
-            rows.add(SheetDto.DetailRow.builder()
+            rows.add(ExcelSheetDto.DetailRow.builder()
                     .department(currentDept)
                     .employeeName(currentName)
                     .workDate(col2)

@@ -1,12 +1,13 @@
 package com.aact.overtime.service;
 
-import com.aact.overtime.dto.OvertimePayApplicationDto;
+import com.aact.overtime.dto.ApplicationDto;
 import com.aact.overtime.entity.OvertimePayApplication;
-import com.aact.overtime.mapper.OvertimePayApplicationMapper;
-import com.aact.overtime.repository.OvertimePayApplicationRepository;
+import com.aact.overtime.mapper.ApplicationMapper;
+import com.aact.overtime.repository.ApplicationRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.multipart.MultipartFile;
 
 import java.util.List;
 import java.util.stream.Collectors;
@@ -14,22 +15,23 @@ import java.util.stream.Collectors;
 @Service
 @RequiredArgsConstructor
 @Transactional(readOnly = true)
-public class OvertimePayApplicationService {
+public class ApplicationService {
 
-    private final OvertimePayApplicationRepository overtimeApplicationRepository;
-    private final OvertimePayApplicationMapper overtimeApplicationMapper;
-    private final OvertimePayApplicationExcelGenerator overtimeApplicationExcelGenerator;
+    private final ApplicationRepository overtimeApplicationRepository;
+    private final ApplicationMapper overtimeApplicationMapper;
+    private final ApplicationExcelGenerator applicationExcelGenerator;
+    private final ApplicationExcelParser applicationExcelParser;
 
     /** 단건 등록 */
     @Transactional
-    public OvertimePayApplicationDto.Response create(OvertimePayApplicationDto.Request request) {
+    public ApplicationDto.Response create(ApplicationDto.Request request) {
         OvertimePayApplication entity = overtimeApplicationMapper.toEntity(request);
         return overtimeApplicationMapper.toResponse(overtimeApplicationRepository.save(entity));
     }
 
     /** 일괄 등록 */
     @Transactional
-    public List<OvertimePayApplicationDto.Response> createAll(List<OvertimePayApplicationDto.Request> requests) {
+    public List<ApplicationDto.Response> createAll(List<ApplicationDto.Request> requests) {
         List<OvertimePayApplication> entities = requests.stream()
                 .map(overtimeApplicationMapper::toEntity)
                 .collect(Collectors.toList());
@@ -39,7 +41,7 @@ public class OvertimePayApplicationService {
     }
 
     /** 연월 + 부서 조회 */
-    public List<OvertimePayApplicationDto.Response> getByYearMonthAndDepartment(
+    public List<ApplicationDto.Response> getByYearMonthAndDepartment(
             String applyYearMonth, String department) {
         return overtimeApplicationRepository
                 .findByApplyYearMonthAndDepartmentOrderByNoAsc(applyYearMonth, department)
@@ -49,7 +51,7 @@ public class OvertimePayApplicationService {
     }
 
     /** 단건 조회 */
-    public OvertimePayApplicationDto.Response getById(Long id) {
+    public ApplicationDto.Response getById(Long id) {
         OvertimePayApplication entity = overtimeApplicationRepository.findById(id)
                 .orElseThrow(() -> new IllegalArgumentException("해당 신청서가 없습니다. id=" + id));
         return overtimeApplicationMapper.toResponse(entity);
@@ -57,7 +59,7 @@ public class OvertimePayApplicationService {
 
     /** 수정 */
     @Transactional
-    public OvertimePayApplicationDto.Response update(Long id, OvertimePayApplicationDto.Request request) {
+    public ApplicationDto.Response update(Long id, ApplicationDto.Request request) {
         OvertimePayApplication entity = overtimeApplicationRepository.findById(id)
                 .orElseThrow(() -> new IllegalArgumentException("해당 신청서가 없습니다. id=" + id));
 
@@ -84,12 +86,40 @@ public class OvertimePayApplicationService {
     }
 
     /**
-     * 엑셀 생성
-     * - 결재란 직급, 서명자(신청자/팀장/부서장 등) 동적으로 받음
+     * 엑셀 파싱 → DB 저장
+     * 엑셀 업로드하면 파싱해서 바로 저장
      */
-    public byte[] generateExcel(OvertimePayApplicationDto.ExcelRequest request) {
+    @Transactional
+    public List<ApplicationDto.Response> parseAndSave(
+            MultipartFile file, String applyYearMonth, String department) {
         try {
-            return overtimeApplicationExcelGenerator.generate(request);
+            List<ApplicationDto.Request> requests =
+                    applicationExcelParser.parse(file.getInputStream(), applyYearMonth, department);
+            return createAll(requests);
+        } catch (Exception e) {
+            throw new RuntimeException("신청서 파싱 실패: " + e.getMessage(), e);
+        }
+    }
+
+    /**
+     * 엑셀 파싱만 (저장 없이 미리보기용)
+     */
+    public List<ApplicationDto.Request> parseOnly(
+            MultipartFile file, String applyYearMonth, String department) {
+        try {
+            return applicationExcelParser.parse(file.getInputStream(), applyYearMonth, department);
+        } catch (Exception e) {
+            throw new RuntimeException("신청서 파싱 실패: " + e.getMessage(), e);
+        }
+    }
+
+    /**
+     * 엑셀 생성
+     * 결재란, 서명자 동적으로 받음
+     */
+    public byte[] generateExcel(ApplicationDto.ExcelRequest request) {
+        try {
+            return applicationExcelGenerator.generate(request);
         } catch (Exception e) {
             throw new RuntimeException("신청서 엑셀 생성 실패: " + e.getMessage(), e);
         }

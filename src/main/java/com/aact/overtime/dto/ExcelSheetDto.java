@@ -1,6 +1,5 @@
 package com.aact.overtime.dto;
 
-import com.aact.overtime.dto.SheetType;
 import lombok.*;
 
 import java.util.List;
@@ -24,7 +23,7 @@ import java.util.List;
  *   }
  * ]
  */
-public class SheetDto {
+public class ExcelSheetDto {
 
     // ────────────────────────────────────────────
     // 표지 시트용 (isCover = true)
@@ -38,7 +37,7 @@ public class SheetDto {
     public static class CoverSheet {
         private String sheetName;   // 시트명
         private boolean isCover;    // 표지 여부 (항상 true)
-        private SheetType type;     // 부서 타입 (조업부 / 항공기운송지원 / 관리부)
+        private ExcelSheetType type;     // 부서 타입 (조업부 / 항공기운송지원 / 관리부)
         private List<CoverRow> data;
     }
 
@@ -62,7 +61,7 @@ public class SheetDto {
     }
 
     // ────────────────────────────────────────────
-    // 세부내역 시트용 (isCover = false)
+    // 개인별 세부내역 시트용 (isCover = false)
     // ────────────────────────────────────────────
 
     @Getter
@@ -73,7 +72,7 @@ public class SheetDto {
     public static class DetailSheet {
         private String sheetName;   // 시트명
         private boolean isCover;    // 표지 여부 (항상 false)
-        private SheetType type;     // 부서 타입
+        private ExcelSheetType type;     // 부서 타입
         private List<DetailRow> data;
     }
 
@@ -109,7 +108,7 @@ public class SheetDto {
     public static class SheetWrapper<T> {
         private String sheetName;
         private boolean isCover;
-        private SheetType type;
+        private ExcelSheetType type;
         private List<T> data;
     }
 }

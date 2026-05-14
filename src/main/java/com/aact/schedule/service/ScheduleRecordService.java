@@ -96,6 +96,7 @@ public class ScheduleRecordService {
                     request.getApplyYearMonth(),
                     request.getDepartment(),
                     request.getFlightCode(),
+                    request.getStatus() != null ? request.getStatus() : "확정",
                     request.getApprovers());
         } catch (Exception e) {
             throw new RuntimeException("스케줄 엑셀 생성 실패: " + e.getMessage(), e);
