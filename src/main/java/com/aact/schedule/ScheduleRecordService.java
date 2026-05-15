@@ -1,4 +1,4 @@
-package com.aact.schedule.service;
+package com.aact.schedule;
 
 import com.aact.schedule.dto.ScheduleRecordDto;
 import com.aact.schedule.entity.ScheduleRecord;
