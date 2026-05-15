@@ -52,7 +52,6 @@ public class ExcelSheetGenerator {
 
             StyleSet styles = new StyleSet(wb);
 
-            // 결재란 기본 3개, 없으면 기본값 사용
             List<String> effectiveApprovers = (approvers != null && !approvers.isEmpty())
                     ? approvers
                     : Arrays.asList("담 당", "과 장", "부 장");
@@ -75,28 +74,6 @@ public class ExcelSheetGenerator {
 
     // ─────────────────────────────────────────────────────────
     // 표지 시트
-    //
-    // 행 구조 (0-based):
-    //   0   : 제목 (h=27.0)
-    //   1   : 여백 (h=9.0)
-    //   2   : 결재란 헤더 행 (h=18.75)  → "결재" + 담당/과장/부장 등
-    //   3~5 : 결재란 서명칸 (h=18.75 × 3)
-    //   6   : 여백 (h=9.0)
-    //   7   : "1. 부서별 집계표" (h=18.75)
-    //   8   : 여백 (h=9.0)
-    //   9   : 헤더1 (h=20.25)
-    //   10  : 헤더2 (h=24.0)
-    //   11~ : 데이터 (h=56.25)
-    //   last: 총 합계 (h=56.25)  ← 데이터와 동일
-    //   +1  : 빈행
-    //   +2  : 빈행
-    //   +3  : "2. 부서별 증감 사유"
-    //   ...
-    //
-    // 결재란 구조 (열과 무관하게 독립):
-    //   - "결재" 셀 1열 + 결재자 N열 균등 배분
-    //   - 총 너비: 결재자수+1 열, col 10-N ~ 10 (우측 정렬)
-    //   - 결재란 전체 thin 테두리
     // ─────────────────────────────────────────────────────────
     private void createCoverSheet(XSSFWorkbook wb, StyleSet styles,
                                   String applyYearMonth, String dept,
@@ -107,7 +84,6 @@ public class ExcelSheetGenerator {
 
         XSSFSheet sheet = wb.createSheet(dept + "표지");
 
-        // 인쇄 설정 (A4)
         sheet.getPrintSetup().setPaperSize(PrintSetup.A4_PAPERSIZE);
         sheet.getPrintSetup().setLandscape(false);
         sheet.setFitToPage(true);
@@ -121,7 +97,6 @@ public class ExcelSheetGenerator {
         sheet.setMargin(Sheet.HeaderMargin, 0.31496062992125984);
         sheet.setMargin(Sheet.FooterMargin, 0.31496062992125984);
 
-        // 열 너비
         sheet.setColumnWidth(0,  COL_DEPT);
         sheet.setColumnWidth(1,  COL_MONTH);
         sheet.setColumnWidth(2,  COL_MONTH);
@@ -145,32 +120,25 @@ public class ExcelSheetGenerator {
         // ── row 1: 여백
         sheet.createRow(1).setHeightInPoints(9.0f);
 
-        // ── row 2~5: 결재란 (열 구조와 무관하게 독립적으로 우측에 그림)
-        // 헤더 1행(row 2) + 서명칸 3행(row 3~5)
-        // "결재" 1열 + 결재자 N열 → 총 (N+1)열, col (10-N)~10 에 배치
+        // ── row 2~5: 결재란
         {
-            int approverCount = approvers.size(); // 기본 3개
-            // 총 열 수 = "결재" 1열 + 결재자 N열
+            int approverCount = approvers.size();
             int totalCols  = approverCount + 1;
             int colEnd     = 10;
-            int colStart   = colEnd - totalCols + 1; // "결재" 라벨 시작열
+            int colStart   = colEnd - totalCols + 1;
 
             for (int i = 2; i <= 5; i++) {
                 sheet.createRow(i).setHeightInPoints(18.75f);
             }
 
-            // "결재" 라벨: row 2~5 병합, thin 테두리
             sheet.addMergedRegion(new CellRangeAddress(2, 5, colStart, colStart));
             fillMergedCells(sheet, wb, 2, 5, colStart, colStart, "결\n재", styles.approvalLabel);
 
-            // 결재자 각 1열씩 배치 (approverCount 초과시 마지막 열에 압축)
             for (int i = 0; i < approverCount; i++) {
                 int c = colStart + 1 + i;
-                if (c > colEnd) c = colEnd; // 안전장치
+                if (c > colEnd) c = colEnd;
 
-                // 헤더 행 (row 2)
                 fillMergedCells(sheet, wb, 2, 2, c, c, approvers.get(i), styles.approvalHeader);
-                // 서명칸 (row 3~5)
                 sheet.addMergedRegion(new CellRangeAddress(3, 5, c, c));
                 fillMergedCells(sheet, wb, 3, 5, c, c, "", styles.approvalBody);
             }
@@ -193,19 +161,28 @@ public class ExcelSheetGenerator {
         sheet.createRow(9).setHeightInPoints(20.25f);
         sheet.createRow(10).setHeightInPoints(24.0f);
 
-        sheet.addMergedRegion(new CellRangeAddress(9, 10, 0, 0));   // 부서명 2행 병합
-        sheet.addMergedRegion(new CellRangeAddress(9, 9,  1,  3));  // 전월
-        sheet.addMergedRegion(new CellRangeAddress(9, 9,  4,  6));  // 당월
-        sheet.addMergedRegion(new CellRangeAddress(9, 9,  7,  9));  // 증감
-        sheet.addMergedRegion(new CellRangeAddress(9, 10, 10, 10)); // 증감사유 2행 병합
+        sheet.addMergedRegion(new CellRangeAddress(9, 10, 0, 0));
+        sheet.addMergedRegion(new CellRangeAddress(9, 9,  1,  3));
+        sheet.addMergedRegion(new CellRangeAddress(9, 9,  4,  6));
+        sheet.addMergedRegion(new CellRangeAddress(9, 9,  7,  9));
+        sheet.addMergedRegion(new CellRangeAddress(9, 10, 10, 10));
 
         fillMergedCells(sheet, wb, 9, 10, 0,  0,  "부서명",                    styles.header);
         fillMergedCells(sheet, wb, 9, 9,  1,  3,  "전월(" + prevMonth + "월)", styles.header);
 
-        // 당월 헤더 1행: 외곽(top/left/right=MEDIUM), 내부 셀 간 경계선 없음
-        // col 4~6 을 병합했으므로 실제로는 셀 하나 → 외곽 4면 medium
-        fillMergedCellsOuterMediumOnly(sheet, wb, 9, 9, 4, 6,
-                "당월(" + month + "월)", styles.header);
+        // 당월 헤더 1행 (col 4~6 병합): top=medium, left(col4)=medium, right(col6)=medium, bottom=thin
+        {
+            Row r9 = sheet.getRow(9);
+            // col4: value 있음, top/left=medium, bottom/right=thin
+            setCellCustomBorder(r9, 4, "당월(" + month + "월)", styles.header, wb,
+                    BorderStyle.MEDIUM, BorderStyle.THIN, BorderStyle.MEDIUM, BorderStyle.THIN);
+            // col5: top=medium, bottom=thin, left/right=none
+            setCellCustomBorder(r9, 5, null, styles.header, wb,
+                    BorderStyle.MEDIUM, BorderStyle.THIN, BorderStyle.NONE, BorderStyle.NONE);
+            // col6: top=medium, bottom=thin, left=none, right=medium
+            setCellCustomBorder(r9, 6, null, styles.header, wb,
+                    BorderStyle.MEDIUM, BorderStyle.THIN, BorderStyle.NONE, BorderStyle.MEDIUM);
+        }
 
         fillMergedCells(sheet, wb, 9, 9,  7,  9,  "증감",    styles.header);
         fillMergedCells(sheet, wb, 9, 10, 10, 10, "증감사유", styles.header);
@@ -215,13 +192,12 @@ public class ExcelSheetGenerator {
         setCell(r10, 1, "연장", styles.header);
         setCell(r10, 2, "야간", styles.header);
         setCell(r10, 3, "휴일", styles.header);
-        // 당월 2행: 좌(4열)·우(6열) 외곽 medium, 위는 없음(1행과 공유), 아래 medium
+        // 당월 2행: col4(연장) left=medium, col5(야간) thin, col6(휴일) right=medium
         setCellOuterBorder(r10, 4, "연장", styles.header, wb,
-                BorderStyle.NONE,   BorderStyle.MEDIUM, BorderStyle.MEDIUM, BorderStyle.NONE);
-        setCellOuterBorder(r10, 5, "야간", styles.header, wb,
-                BorderStyle.NONE,   BorderStyle.MEDIUM, BorderStyle.NONE,   BorderStyle.NONE);
+                BorderStyle.THIN, BorderStyle.THIN, BorderStyle.MEDIUM, BorderStyle.THIN);
+        setCell(r10, 5, "야간", styles.header);
         setCellOuterBorder(r10, 6, "휴일", styles.header, wb,
-                BorderStyle.NONE,   BorderStyle.MEDIUM, BorderStyle.NONE,   BorderStyle.MEDIUM);
+                BorderStyle.THIN, BorderStyle.THIN, BorderStyle.THIN, BorderStyle.MEDIUM);
         setCell(r10, 7, "연장", styles.header);
         setCell(r10, 8, "야간", styles.header);
         setCell(r10, 9, "휴일", styles.header);
@@ -235,21 +211,20 @@ public class ExcelSheetGenerator {
             Row dr = sheet.createRow(rowIdx);
             dr.setHeightInPoints(56.25f);
 
-            setCell   (dr, 0,  s.getDepartment(),                                       styles.dataCenter);
-            setNumCell(dr, 1,  s.getPrevExtensionHours(),                               styles.dataCenter);
-            setNumCell(dr, 2,  s.getPrevNightHours(),                                   styles.dataCenter);
-            setNumCell(dr, 3,  s.getPrevHolidayHours(),                                 styles.dataCenter);
-            // 당월 데이터: 좌(4열)·우(6열) 외곽 medium, 셀 간 내부 경계 없음(NONE)
+            setCell   (dr, 0,  s.getDepartment(),                                      styles.dataCenter);
+            setNumCell(dr, 1,  s.getPrevExtensionHours(),                              styles.dataCenter);
+            setNumCell(dr, 2,  s.getPrevNightHours(),                                  styles.dataCenter);
+            setNumCell(dr, 3,  s.getPrevHolidayHours(),                                styles.dataCenter);
+            // 당월 데이터: col4 left=medium, col5 thin, col6 right=medium
             setNumCellOuterBorder(dr, 4, s.getCurrExtensionHours(), styles.dataCenter, wb,
-                    BorderStyle.MEDIUM, BorderStyle.MEDIUM, BorderStyle.MEDIUM, BorderStyle.NONE);
-            setNumCellOuterBorder(dr, 5, s.getCurrNightHours(),     styles.dataCenter, wb,
-                    BorderStyle.MEDIUM, BorderStyle.MEDIUM, BorderStyle.NONE,   BorderStyle.NONE);
+                    BorderStyle.THIN, BorderStyle.THIN, BorderStyle.MEDIUM, BorderStyle.THIN);
+            setNumCell(dr, 5,  s.getCurrNightHours(),                                  styles.dataCenter);
             setNumCellOuterBorder(dr, 6, s.getCurrHolidayHours(),   styles.dataCenter, wb,
-                    BorderStyle.MEDIUM, BorderStyle.MEDIUM, BorderStyle.NONE,   BorderStyle.MEDIUM);
-            setNumCell(dr, 7,  s.getDiffExtensionHours(),                               styles.dataCenter);
-            setNumCell(dr, 8,  s.getDiffNightHours(),                                   styles.dataCenter);
-            setNumCell(dr, 9,  s.getDiffHolidayHours(),                                 styles.dataCenter);
-            setCell   (dr, 10, s.getChangeReason() != null ? s.getChangeReason() : "",  styles.dataCenter);
+                    BorderStyle.THIN, BorderStyle.THIN, BorderStyle.THIN, BorderStyle.MEDIUM);
+            setNumCell(dr, 7,  s.getDiffExtensionHours(),                              styles.dataCenter);
+            setNumCell(dr, 8,  s.getDiffNightHours(),                                  styles.dataCenter);
+            setNumCell(dr, 9,  s.getDiffHolidayHours(),                                styles.dataCenter);
+            setCell   (dr, 10, s.getChangeReason() != null ? s.getChangeReason() : "", styles.dataCenter);
 
             totalPrevExt   += nvl(s.getPrevExtensionHours());
             totalPrevNight += nvl(s.getPrevNightHours());
@@ -260,46 +235,39 @@ public class ExcelSheetGenerator {
             rowIdx++;
         }
 
-        // ── 총 합계 행 (데이터 행과 동일한 높이)
+        // ── 총 합계 행: col4 left=medium/bottom=medium, col5 bottom=medium, col6 right/bottom=medium
         Row totalRow = sheet.createRow(rowIdx);
         totalRow.setHeightInPoints(56.25f);
-        setCell   (totalRow, 0,  "총 합계",                       styles.header);
-        setNumCell(totalRow, 1,  totalPrevExt,                    styles.header);
-        setNumCell(totalRow, 2,  totalPrevNight,                  styles.header);
-        setNumCell(totalRow, 3,  totalPrevHol,                    styles.header);
-        // 당월 합계: 외곽만 medium
+        setCell   (totalRow, 0,  "총 합계",                      styles.header);
+        setNumCell(totalRow, 1,  totalPrevExt,                   styles.header);
+        setNumCell(totalRow, 2,  totalPrevNight,                 styles.header);
+        setNumCell(totalRow, 3,  totalPrevHol,                   styles.header);
+        // 당월 합계: col4 top/left/bottom=medium, right=thin
         setNumCellOuterBorder(totalRow, 4, totalCurrExt,   styles.header, wb,
-                BorderStyle.MEDIUM, BorderStyle.MEDIUM, BorderStyle.MEDIUM, BorderStyle.NONE);
+                BorderStyle.THIN, BorderStyle.MEDIUM, BorderStyle.MEDIUM, BorderStyle.THIN);
+        // col5 top=thin, bottom=medium, left/right=thin
         setNumCellOuterBorder(totalRow, 5, totalCurrNight, styles.header, wb,
-                BorderStyle.MEDIUM, BorderStyle.MEDIUM, BorderStyle.NONE,   BorderStyle.NONE);
+                BorderStyle.THIN, BorderStyle.MEDIUM, BorderStyle.THIN, BorderStyle.THIN);
+        // col6 top=thin, bottom/right=medium, left=thin
         setNumCellOuterBorder(totalRow, 6, totalCurrHol,   styles.header, wb,
-                BorderStyle.MEDIUM, BorderStyle.MEDIUM, BorderStyle.NONE,   BorderStyle.MEDIUM);
-        setNumCell(totalRow, 7,  totalCurrExt   - totalPrevExt,   styles.header);
+                BorderStyle.THIN, BorderStyle.MEDIUM, BorderStyle.THIN, BorderStyle.MEDIUM);
+        setNumCell(totalRow, 7,  totalCurrExt   - totalPrevExt,  styles.header);
         setNumCell(totalRow, 8,  totalCurrNight - totalPrevNight, styles.header);
-        setNumCell(totalRow, 9,  totalCurrHol   - totalPrevHol,   styles.header);
-        setCell   (totalRow, 10, "",                              styles.header);
+        setNumCell(totalRow, 9,  totalCurrHol   - totalPrevHol,  styles.header);
+        setCell   (totalRow, 10, "",                             styles.header);
         rowIdx++;
 
-        // ─────────────────────────────────────────────────────────
-        // 여기에 추가하세요!
-        // ─────────────────────────────────────────────────────────
-        org.apache.poi.ss.util.PropertyTemplate pt = new org.apache.poi.ss.util.PropertyTemplate();
-        // 9행(당월 헤더 시작)부터 rowIdx-1(총 합계 행 끝)까지, 4~6열(당월 영역) 외곽만 굵게
-        pt.drawBorders(new CellRangeAddress(9, 10, 4, 6),
-                BorderStyle.MEDIUM, BorderExtent.OUTSIDE);
-        pt.applyBorders(sheet);
-        // ─────────────────────────────────────────────────────────
-
         // ── 2행 빈행 후 "2. 부서별 증감 사유"
-        sheet.createRow(rowIdx++).setHeightInPoints(18.75f); // 빈행 1
-        sheet.createRow(rowIdx++).setHeightInPoints(18.75f); // 빈행 2
+        sheet.createRow(rowIdx++).setHeightInPoints(18.75f);
+        sheet.createRow(rowIdx++).setHeightInPoints(18.75f);
 
         Row r2s = sheet.createRow(rowIdx++);
         r2s.setHeightInPoints(18.75f);
         r2s.createCell(0).setCellValue("2. 부서별 증감 사유 : 붙임참조");
         r2s.getCell(0).setCellStyle(styles.sectionTitle);
 
-        sheet.createRow(rowIdx++).setHeightInPoints(18.75f); // 빈행
+        sheet.createRow(rowIdx++).setHeightInPoints(18.75f);
+        sheet.createRow(rowIdx++).setHeightInPoints(18.75f);
 
         // ── 3. 개인별 집계표
         Row r3s = sheet.createRow(rowIdx++);
@@ -307,7 +275,7 @@ public class ExcelSheetGenerator {
         r3s.createCell(0).setCellValue("3. 개인별 집계표 : 붙임참조");
         r3s.getCell(0).setCellStyle(styles.sectionTitle);
 
-        sheet.createRow(rowIdx++).setHeightInPoints(18.75f); // 빈행
+        sheet.createRow(rowIdx++).setHeightInPoints(18.75f);
 
         // ── 안내 문구
         sheet.addMergedRegion(new CellRangeAddress(rowIdx, rowIdx, 0, 10));
@@ -316,6 +284,7 @@ public class ExcelSheetGenerator {
         noteCell.setCellValue("\u3000\u3000상기와 같이 " + month + "월 시간외 수당을 신청하오니 검토하시고 재가하여 주시기 바랍니다.");
         noteCell.setCellStyle(styles.noteText);
 
+        sheet.createRow(rowIdx++).setHeightInPoints(250.75f);
         // ── 날짜
         rowIdx += 5;
         sheet.addMergedRegion(new CellRangeAddress(rowIdx, rowIdx, 0, 10));
@@ -335,7 +304,7 @@ public class ExcelSheetGenerator {
     }
 
     // ─────────────────────────────────────────────────────────
-    // 세부내역 시트 (기존 코드 완전 유지)
+    // 세부내역 시트
     // ─────────────────────────────────────────────────────────
     private void createDetailSheet(XSSFWorkbook wb, StyleSet styles,
                                    String applyYearMonth, String dept,
@@ -492,7 +461,6 @@ public class ExcelSheetGenerator {
         StyleSet(XSSFWorkbook wb) {
             byte[] gray = {(byte)217, (byte)217, (byte)217};
 
-            // 제목
             coverTitle = wb.createCellStyle();
             XSSFFont cf = wb.createFont();
             cf.setFontName("HY헤드라인M"); cf.setFontHeightInPoints((short)22); cf.setBold(false);
@@ -500,14 +468,12 @@ public class ExcelSheetGenerator {
             coverTitle.setAlignment(HorizontalAlignment.CENTER);
             coverTitle.setVerticalAlignment(VerticalAlignment.CENTER);
 
-            // 섹션
             sectionTitle = wb.createCellStyle();
             XSSFFont sf = wb.createFont();
             sf.setFontName("돋움"); sf.setFontHeightInPoints((short)14); sf.setBold(true);
             sectionTitle.setFont(sf);
             sectionTitle.setVerticalAlignment(VerticalAlignment.CENTER);
 
-            // 세부내역 제목
             detailTitle = wb.createCellStyle();
             XSSFFont dtf = wb.createFont();
             dtf.setFontName("돋움"); dtf.setFontHeightInPoints((short)14); dtf.setBold(false);
@@ -515,7 +481,6 @@ public class ExcelSheetGenerator {
             detailTitle.setAlignment(HorizontalAlignment.CENTER);
             detailTitle.setVerticalAlignment(VerticalAlignment.CENTER);
 
-            // 헤더 기본 (thin 테두리)
             header = wb.createCellStyle();
             XSSFFont hf = wb.createFont();
             hf.setFontName("돋움"); hf.setFontHeightInPoints((short)12); hf.setBold(true);
@@ -526,7 +491,6 @@ public class ExcelSheetGenerator {
             ((XSSFCellStyle)header).setFillForegroundColor(new XSSFColor(gray, null));
             header.setFillPattern(FillPatternType.SOLID_FOREGROUND);
 
-            // 데이터 기본 (thin 테두리, 중앙)
             data = wb.createCellStyle();
             data.setAlignment(HorizontalAlignment.CENTER);
             data.setVerticalAlignment(VerticalAlignment.CENTER);
@@ -539,7 +503,6 @@ public class ExcelSheetGenerator {
             dataLeft.cloneStyleFrom(data);
             dataLeft.setAlignment(HorizontalAlignment.LEFT);
 
-            // 결재 라벨 ("결\n재") - 얇은 테두리
             approvalLabel = wb.createCellStyle();
             XSSFFont alf = wb.createFont();
             alf.setFontName("돋움"); alf.setFontHeightInPoints((short)11);
@@ -549,7 +512,6 @@ public class ExcelSheetGenerator {
             approvalLabel.setWrapText(true);
             setThin(approvalLabel);
 
-            // 결재자 직급 헤더 - 얇은 테두리
             approvalHeader = wb.createCellStyle();
             XSSFFont ahf = wb.createFont();
             ahf.setFontName("돋움"); ahf.setFontHeightInPoints((short)11);
@@ -558,20 +520,17 @@ public class ExcelSheetGenerator {
             approvalHeader.setVerticalAlignment(VerticalAlignment.CENTER);
             setThin(approvalHeader);
 
-            // 결재 서명칸 - 얇은 테두리
             approvalBody = wb.createCellStyle();
             approvalBody.setAlignment(HorizontalAlignment.CENTER);
             approvalBody.setVerticalAlignment(VerticalAlignment.CENTER);
             setThin(approvalBody);
 
-            // 안내문구
             noteText = wb.createCellStyle();
             XSSFFont nf = wb.createFont();
             nf.setFontName("돋움"); nf.setFontHeightInPoints((short)12);
             noteText.setFont(nf);
             noteText.setVerticalAlignment(VerticalAlignment.CENTER);
 
-            // 날짜
             dateText = wb.createCellStyle();
             XSSFFont datef = wb.createFont();
             datef.setFontName("돋움"); datef.setFontHeightInPoints((short)14);
@@ -579,7 +538,6 @@ public class ExcelSheetGenerator {
             dateText.setAlignment(HorizontalAlignment.CENTER);
             dateText.setVerticalAlignment(VerticalAlignment.CENTER);
 
-            // 회사명
             companyName = wb.createCellStyle();
             XSSFFont cnf = wb.createFont();
             cnf.setFontName("돋움"); cnf.setFontHeightInPoints((short)18); cnf.setBold(true);
@@ -597,41 +555,28 @@ public class ExcelSheetGenerator {
     }
 
     // ─────────────────────────────────────────────────────────
-    // 당월 영역 외곽만 medium 헬퍼
+    // 커스텀 border 헬퍼 (문자열, null이면 값 안 씀)
+    // top / bottom / left / right 순
     // ─────────────────────────────────────────────────────────
-
-    /**
-     * 병합 셀 영역: 값 쓰고 외곽 4면만 MEDIUM, 내부 셀 경계 없음(NONE).
-     * 당월 헤더(9행, col 4~6) 전용 — 병합 후 실제로 셀 1개처럼 보임.
-     */
-    private void fillMergedCellsOuterMediumOnly(XSSFSheet sheet, XSSFWorkbook wb,
-                                                int firstRow, int lastRow,
-                                                int firstCol, int lastCol,
-                                                String value, CellStyle baseStyle) {
-        for (int r = firstRow; r <= lastRow; r++) {
-            Row row = getOrCreateRow(sheet, r);
-            for (int c = firstCol; c <= lastCol; c++) {
-                Cell cell = row.getCell(c);
-                if (cell == null) cell = row.createCell(c);
-                if (r == firstRow && c == firstCol) {
-                    cell.setCellValue(value != null ? value : "");
-                }
-                XSSFCellStyle cs = wb.createCellStyle();
-                cs.cloneStyleFrom(baseStyle);
-                // 외곽 4면만 MEDIUM, 내부 경계 NONE
-                cs.setBorderTop   (r == firstRow ? BorderStyle.MEDIUM : BorderStyle.NONE);
-                cs.setBorderBottom(r == lastRow  ? BorderStyle.MEDIUM : BorderStyle.NONE);
-                cs.setBorderLeft  (c == firstCol ? BorderStyle.MEDIUM : BorderStyle.NONE);
-                cs.setBorderRight (c == lastCol  ? BorderStyle.MEDIUM : BorderStyle.NONE);
-                cell.setCellStyle(cs);
-            }
-        }
+    private void setCellCustomBorder(Row row, int col, String value, CellStyle baseStyle,
+                                     XSSFWorkbook wb,
+                                     BorderStyle top, BorderStyle bottom,
+                                     BorderStyle left, BorderStyle right) {
+        Cell cell = row.getCell(col);
+        if (cell == null) cell = row.createCell(col);
+        if (value != null) cell.setCellValue(value);
+        XSSFCellStyle cs = wb.createCellStyle();
+        cs.cloneStyleFrom(baseStyle);
+        cs.setBorderTop(top);
+        cs.setBorderBottom(bottom);
+        cs.setBorderLeft(left);
+        cs.setBorderRight(right);
+        cell.setCellStyle(cs);
     }
 
-    /**
-     * 개별 셀 커스텀 border (문자열).
-     * top / bottom / left / right 순.
-     */
+    // ─────────────────────────────────────────────────────────
+    // 커스텀 border 헬퍼 (문자열, 기존 setCellOuterBorder 유지)
+    // ─────────────────────────────────────────────────────────
     private void setCellOuterBorder(Row row, int col, String value, CellStyle baseStyle,
                                     XSSFWorkbook wb,
                                     BorderStyle top, BorderStyle bottom,
@@ -647,9 +592,9 @@ public class ExcelSheetGenerator {
         cell.setCellStyle(cs);
     }
 
-    /**
-     * 개별 셀 커스텀 border (숫자).
-     */
+    // ─────────────────────────────────────────────────────────
+    // 커스텀 border 헬퍼 (숫자)
+    // ─────────────────────────────────────────────────────────
     private void setNumCellOuterBorder(Row row, int col, Double value, CellStyle baseStyle,
                                        XSSFWorkbook wb,
                                        BorderStyle top, BorderStyle bottom,
