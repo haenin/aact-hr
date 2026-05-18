@@ -49,8 +49,7 @@ public class ScheduleExcelGenerator {
 
             // --- [수정] 결재란과 테이블 사이 간격 조절 ---
             Row emptyRow = sheet.createRow(2); // 2번 행 생성
-            emptyRow.setHeightInPoints(40);    // 기본값은 보통 15~20pt입니다. 40~60 정도로 키우면 확 벌어집니다.
-// ----------------------------------------
+            emptyRow.setHeightInPoints(40);
 
             // 2. 헤더 (3~4행 사용 / 2행은 빈칸)
             createHeaderRows(sheet, styles, lastDay, ym);
@@ -60,7 +59,7 @@ public class ScheduleExcelGenerator {
             int seq = 1;
             for (ScheduleRecord rec : records) {
                 Row dr = sheet.createRow(rowIdx++);
-                dr.setHeightInPoints(25); //
+                dr.setHeightInPoints(25); // 테이블 안 각 행 높이
                 Map<Integer, String> days = scheduleRecordMapper.mapDaysFromEntity(rec);
                 createDataRow(dr, styles, rec, days, lastDay, seq++, ym);
             }
@@ -90,7 +89,7 @@ public class ScheduleExcelGenerator {
         // --- [해결] 실제 병합은 AF(31)까지만 진행하여 결재란(32~)과 겹치지 않게 방어 ---
         sheet.addMergedRegion(new CellRangeAddress(0, 1, 0, approvalStartCol - 1));
         Cell titleCell = r0.createCell(0);
-        titleCell.setCellValue("                                           AACT " + year + "년 " + month + "월 " + department
+        titleCell.setCellValue("                                    AACT " + year + "년 " + month + "월 " + department
                 + " / " + flightCode + " " + status + " SKD");
 
         // 스타일을 통해 시각적으로만 AK까지의 중앙에 정렬되도록 트릭 적용
@@ -250,6 +249,8 @@ public class ScheduleExcelGenerator {
             tint(approvalLabel, (byte)217, (byte)217, (byte)217);
 
             approvalHeader = base(wb, true, 10, false, true);
+            tint(approvalHeader, (byte)217, (byte)217, (byte)217);
+
             approvalBody = base(wb, false, 10, false, true);
         }
 

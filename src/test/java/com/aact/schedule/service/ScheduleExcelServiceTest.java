@@ -34,7 +34,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 @SpringBootTest
 @Transactional
 @DisplayName("스케줄 서비스 통합 테스트")
-class ScheduleRecordServiceTest {
+class ScheduleExcelServiceTest {
 
     @Autowired private ScheduleRecordService scheduleRecordService;
     @Autowired private ScheduleRecordRepository scheduleRecordRepository;

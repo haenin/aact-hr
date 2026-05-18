@@ -42,8 +42,8 @@ public final class ScheduleTestFixture {
     public static final String FLIGHT_CODE_C = "AA, CX";
 
     // ── 결재자 (직급명)
-    public static final List<String> APPROVERS_A = List.of("대리", "부장", "상무");
-    public static final List<String> APPROVERS_B = List.of("사원", "대리", "팀장");
+    public static final List<String> APPROVERS_A = List.of("부장", "상무");
+    public static final List<String> APPROVERS_B = List.of("대리", "팀장");
     public static final List<String> APPROVERS_C = List.of("주임", "과장", "차장", "상무");
 
     private ScheduleTestFixture() {}

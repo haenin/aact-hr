@@ -102,7 +102,7 @@ public class ApplicationExcelGenerator {
             sheet.setMargin(Sheet.HeaderMargin, 0.0);
             sheet.setMargin(Sheet.FooterMargin, 0.0);
 
-            sheet.setDisplayGridlines(false); // 시트의 기본 눈금선을 보이지 않게 설정
+            sheet.setDisplayGridlines(false);
             wb.write(out);
             return out.toByteArray();
         }
@@ -114,44 +114,20 @@ public class ApplicationExcelGenerator {
         Row r = sheet.createRow(rowIdx);
         r.setHeightInPoints(80);
 
-        // [핵심 수정] 0~8번 셀을 생성하되, 테두리가 없는 스타일(noBorder)을 입힙니다.
-        // styles.title을 입히면 bordered 설정 때문에 선이 생깁니다.
         for (int i = 0; i <= 8; i++) {
             Cell cell = r.createCell(i);
             cell.setCellStyle(styles.noBorder);
         }
 
-        // 셀 병합
         sheet.addMergedRegion(new CellRangeAddress(rowIdx, rowIdx, 0, 8));
 
-        // 0번 셀에만 제목 전용 스타일(폰트 크기+정렬)을 입힙니다.
-        // 단, styles.title에 테두리 설정이 있다면 아래처럼 새로 정의한 스타일을 쓰는게 좋습니다.
         Cell c = r.getCell(0);
         c.setCellValue("시간 외 근무수당 신청서 (" + dept + ")");
-
-        // 테두리 없는 제목 전용 스타일 적용 (아래 StyleSet 수정 참고)
         c.setCellStyle(styles.titleNoBorder);
 
         return ++rowIdx;
     }
 
-    /**
-     * [row 1~2]
-     *  col 0~7 : 로고(row1 col0~6 병합), 나머지 빈칸
-     *  col 8   : 결재란 Drawing (근무사유 열 위에만 배치)
-     *
-     *  결재란 구조 (col 8 내부를 dx 오프셋으로 3분할):
-     *   ┌──────┬──────┬──────┐
-     *   │  결재 │  담당 │  과장 │  ← row1 (헤더)
-     *   │      ├──────┼──────┤
-     *   │      │      │      │  ← row2 (서명칸)
-     *   └──────┴──────┴──────┘
-     *
-     *  col 8 너비 = 10000 units
-     *  EMU 환산: 10000 * 914400 / 1024 ≈ 8,929,687 → 편의상 2,600,000 EMU 사용
-     *  결재 레이블 : 1/4 = 650,000 EMU
-     *  담당/과장   : 각 3/8 = 975,000 EMU
-     */
     private int createLogoAndApprovalBlock(XSSFSheet sheet, StyleSet styles,
                                            List<String> approvers, int rowIdx,
                                            XSSFWorkbook wb) {
@@ -162,10 +138,8 @@ public class ApplicationExcelGenerator {
             row1.createCell(col).setCellStyle(styles.noBorder);
         }
 
-        // ← drawing 딱 한 번만 생성
         XSSFDrawing drawing = sheet.createDrawingPatriarch();
 
-        // 이미지 삽입
         try {
             var is = getClass().getResourceAsStream("/img.png");
             if (is != null) {
@@ -173,7 +147,6 @@ public class ApplicationExcelGenerator {
                 int pictureIdx = wb.addPicture(bytes, Workbook.PICTURE_TYPE_PNG);
                 is.close();
 
-                // ← 위에서 만든 drawing 재사용
                 XSSFClientAnchor anchor = drawing.createAnchor(0, 0, 0, 0, 0, rowIdx + 1, 3, rowIdx + 2);
                 anchor.setAnchorType(ClientAnchor.AnchorType.MOVE_AND_RESIZE);
                 drawing.createPicture(anchor, pictureIdx);
@@ -194,19 +167,16 @@ public class ApplicationExcelGenerator {
         row2.createCell(7).setCellStyle(styles.noBorder);
         row2.createCell(8).setCellStyle(styles.noBorder);
 
-        // 결재란도 같은 drawing 재사용 (새로 createDrawingPatriarch() 호출 X)
         List<String> headers = (approvers != null && !approvers.isEmpty())
                 ? approvers : List.of("담당", "대리");
 
-        // --- EMU 계산 로직 (동적 변경) ---
-        int totalEmu  = 3_000_000; // 전체 너비를 조금 더 넓게 조정 (선택 사항)
-        int offsetEmu = 0;   // 왼쪽 여백
-        int labelEmu  = 400_000;   // "결재" 박스 너비
+        int totalEmu  = 3_000_000;
+        int offsetEmu = 0;
+        int labelEmu  = 400_000;
 
         int count = headers.size();
-        int eachEmu = (totalEmu - labelEmu) / count; // 결재자 수만큼 균등 배분
+        int eachEmu = (totalEmu - labelEmu) / count;
 
-        // 1. "결재" 레이블 생성 (rowIdx ~ rowIdx + 2 높이)
         XSSFClientAnchor labelAnchor = drawing.createAnchor(
                 offsetEmu, 0,
                 offsetEmu + labelEmu, 0,
@@ -214,15 +184,12 @@ public class ApplicationExcelGenerator {
                 8, rowIdx + 2
         );
         XSSFTextBox labelBox = drawing.createTextbox(labelAnchor);
-        applyBoxStyle(labelBox, wb, "결\n재", true, true); // 공통 스타일 적용
+        applyBoxStyle(labelBox, wb, "결\n재", true, true);
 
-        // 2. 결재자별 헤더 및 서명칸 생성
         for (int i = 0; i < count; i++) {
-            // x축 위치 계산: 시작점 + 결재레이블 + (순번 * 개별너비)
             int currentStartX = offsetEmu + labelEmu + (i * eachEmu);
             int currentEndX   = currentStartX + eachEmu;
 
-            // 헤더 (상단: 담당/대리/과장)
             XSSFClientAnchor hAnchor = drawing.createAnchor(
                     currentStartX, 0, currentEndX, 0,
                     8, rowIdx,
@@ -231,7 +198,6 @@ public class ApplicationExcelGenerator {
             XSSFTextBox hBox = drawing.createTextbox(hAnchor);
             applyBoxStyle(hBox, wb, headers.get(i), true, true);
 
-            // 서명칸 (하단: 빈칸)
             XSSFClientAnchor sAnchor = drawing.createAnchor(
                     currentStartX, 0, currentEndX, 0,
                     8, rowIdx + 1,
@@ -245,11 +211,11 @@ public class ApplicationExcelGenerator {
     }
 
     /**
-     * 텍스트박스 스타일 중복 코드를 줄이기 위한 헬퍼 메서드
+     * 텍스트박스 스타일 공통 헬퍼 — 맑은 고딕 적용
      */
     private void applyBoxStyle(XSSFTextBox box, XSSFWorkbook wb, String text, boolean isBold, boolean hasFill) {
         box.setLineStyleColor(0, 0, 0);
-        box.setLineWidth(0.5); // [수정] 0.75에서 0.5로 더 얇게 조정
+        box.setLineWidth(0.5);
 
         if (hasFill) {
             box.setFillColor(217, 217, 217);
@@ -260,6 +226,7 @@ public class ApplicationExcelGenerator {
         XSSFFont font = wb.createFont();
         font.setBold(isBold);
         font.setFontHeightInPoints((short) 9);
+        font.setFontName("맑은 고딕"); // ← 추가
 
         XSSFRichTextString richText = new XSSFRichTextString(text);
         richText.applyFont(font);
@@ -281,30 +248,29 @@ public class ApplicationExcelGenerator {
         return ++rowIdx;
     }
 
-    // ── 테이블 헤더 (줄바꿈 없이 한 줄, 근무사유 중앙정렬)
+    // ── 테이블 헤더
     private int createTableHeader(XSSFSheet sheet, StyleSet styles, int rowIdx) {
         Row r = sheet.createRow(rowIdx);
-        r.setHeightInPoints(24);
+        r.setHeightInPoints(25);
         setCell(r, 0, "NO",          styles.header);
         setCell(r, 1, "일 자",        styles.header);
         setCell(r, 2, "성 명",        styles.header);
         setCell(r, 3, "예정근무시간",   styles.header);
         setCell(r, 4, "실근무시간",    styles.header);
-        setCell(r, 5, "연장근무시간",  styles.header);  // 줄바꿈 제거
-        setCell(r, 6, "야간근무시간",  styles.header);  // 줄바꿈 제거
-        setCell(r, 7, "휴일근무시간",  styles.header);  // 줄바꿈 제거
-        setCell(r, 8, "근무사유",  styles.header);  // 중앙정렬 (header와 동일)
+        setCell(r, 5, "연장근무시간",  styles.header);
+        setCell(r, 6, "야간근무시간",  styles.header);
+        setCell(r, 7, "휴일근무시간",  styles.header);
+        setCell(r, 8, "근무사유",      styles.header);
         return ++rowIdx;
     }
 
-    // ── 데이터 행 (근무사유 중앙정렬)
+    // ── 데이터 행
     private void createDataRow(XSSFSheet sheet, StyleSet styles,
                                OvertimePayApplication rec, int rowIdx) {
         Row r = sheet.createRow(rowIdx);
-        // 데이터 행의 높이를 설정
-        r.setHeightInPoints(20);
-        // 1. 날짜 가공 로직
-        String originalDate = rec.getWorkDate(); // "2026-05-02"
+        r.setHeightInPoints(25);
+
+        String originalDate = rec.getWorkDate();
         String formattedDate = "";
 
         if (originalDate != null && originalDate.contains("-")) {
@@ -320,9 +286,8 @@ public class ApplicationExcelGenerator {
             formattedDate = (originalDate != null) ? originalDate : "";
         }
 
-        // 2. 셀에 데이터 채우기
         setCell(r, 0, String.valueOf(rec.getNo()), styles.dataCenter);
-        setCell(r, 1, formattedDate, styles.dataCenter); // 가공된 "05월 02일"
+        setCell(r, 1, formattedDate, styles.dataCenter);
 
         setCell   (r, 2, rec.getEmployeeName()  != null ? rec.getEmployeeName()  : "",  styles.dataCenter);
         setCell   (r, 3, rec.getScheduledTime() != null ? rec.getScheduledTime() : "",  styles.dataCenter);
@@ -333,7 +298,7 @@ public class ApplicationExcelGenerator {
         setCell   (r, 8, rec.getWorkReason()    != null ? rec.getWorkReason()    : "",  styles.dataCenter);
     }
 
-    // ── 합계 행 수정
+    // ── 합계 행
     private void createTotalRow(XSSFSheet sheet, StyleSet styles,
                                 double ext, double night, double holiday, int rowIdx) {
         Row r = sheet.createRow(rowIdx);
@@ -341,29 +306,25 @@ public class ApplicationExcelGenerator {
 
         for (int i = 0; i <= 8; i++) {
             Cell c = r.createCell(i);
-            // 기본적으로 테두리가 있는 스타일 적용
             if (i <= 4) {
-                c.setCellStyle(styles.totalLabel); // 합계 글자 쪽 배경색 있는 스타일
+                c.setCellStyle(styles.totalLabel);
+            } else if (i >= 5 && i <= 7) {
+                c.setCellStyle(styles.totalValue);
             } else {
-                c.setCellStyle(styles.header);     // 숫자 및 빈칸 쪽 테두리 스타일
+                c.setCellStyle(styles.header);
             }
         }
 
-        // 2. 0~4번 컬럼 병합
         sheet.addMergedRegion(new CellRangeAddress(rowIdx, rowIdx, 0, 4));
 
-        // 3. 값 다시 세팅 (이미 위에서 스타일을 입혔으므로 값만 넣으면 됨)
         r.getCell(0).setCellValue("합    계");
         r.getCell(5).setCellValue(ext);
         r.getCell(6).setCellValue(night);
         r.getCell(7).setCellValue(holiday);
-        // r.getCell(8)은 이미 위 루프에서 styles.header가 적용되어 테두리가 생깁니다.
     }
 
     /**
-     * 서명란 — col 8 아래, 합계 행 다음 행부터
-     *  예시:  신 청 자 :  홍길동   (인)
-     *         팀    장 :  김팀장   (인)
+     * 서명란 — 맑은 고딕 적용
      */
     private void createSignerRows(XSSFSheet sheet, StyleSet styles,
                                   List<ApplicationDto.Signer> signers, int rowIdx) {
@@ -372,63 +333,54 @@ public class ApplicationExcelGenerator {
         int startRow = rowIdx + 1;
         Workbook wb = sheet.getWorkbook();
 
-        // 1. 이름용 볼드 폰트 생성
+        // ← 맑은 고딕 적용
         XSSFFont boldFont = (XSSFFont) wb.createFont();
         boldFont.setBold(true);
         boldFont.setFontHeightInPoints((short) 11);
+        boldFont.setFontName("맑은 고딕"); // ← 추가
 
-        // 2. (인) 및 기본 텍스트용 일반 폰트 생성
         XSSFFont plainFont = (XSSFFont) wb.createFont();
         plainFont.setBold(false);
         plainFont.setFontHeightInPoints((short) 11);
+        plainFont.setFontName("맑은 고딕"); // ← 추가
 
         for (int i = 0; i < signers.size(); i++) {
             ApplicationDto.Signer signer = signers.get(i);
             Row r = sheet.createRow(startRow + i);
             r.setHeightInPoints(36);
 
-            // 왼쪽 빈 셀들 스타일 적용
             for (int col = 0; col <= 6; col++) {
                 r.createCell(col).setCellStyle(styles.noBorder);
             }
 
-            // --- 역할 라벨 처리 (예: "신청자" -> "신 청 자") ---
             Cell roleCell = r.createCell(7);
             String rawRole = signer.getRole() != null ? signer.getRole() : "";
 
-            // 글자들 사이에 공백 1칸씩 삽입 (글자가 2자면 "A B", 3자면 "A B C")
             String displayRole = String.join(" ", rawRole.split(""));
-
-            // 만약 2글자일 때 3글자 너비처럼 더 벌리고 싶다면 아래 로직 사용
             if (rawRole.length() == 2) {
-                displayRole = rawRole.charAt(0) + "    " + rawRole.charAt(1); // 공백 4칸
+                displayRole = rawRole.charAt(0) + "    " + rawRole.charAt(1);
             }
 
             roleCell.setCellValue(displayRole + " :");
             roleCell.setCellStyle(styles.signerRole);
 
-            // --- 이름 및 (인) 처리 (이름만 볼드) ---
             Cell nameCell = r.createCell(8);
             XSSFRichTextString richText = new XSSFRichTextString();
-
-            // 이름 부분 (Bold)
             richText.append("  " + (signer.getName() != null ? signer.getName() : ""), boldFont);
-
-            // 간격 및 (인) (Plain)
-            // %-60s 같은 방식보다 공백 문자를 직접 넉넉히 넣는게 엑셀에서 더 안정적입니다.
-            richText.append("                                                                 (인)", plainFont);
+            richText.append("                                            (인)", plainFont);
 
             nameCell.setCellValue(richText);
             nameCell.setCellStyle(styles.signerLine);
         }
     }
 
-    // ────────────────────────────────────────────────
-    // StyleSet
-    // ────────────────────────────────────────────────
+    // ────────────────────────────────────────────────────────────────
+    // StyleSet — bordered(), plain() 모두 맑은 고딕 적용
+    // ────────────────────────────────────────────────────────────────
     private static class StyleSet {
-        final CellStyle title,titleNoBorder, approvalLabel, approvalHeader, approvalSign;
+        final CellStyle title, titleNoBorder, approvalLabel, approvalHeader, approvalSign;
         final CellStyle logo, yearMonth, header, totalLabel;
+        final CellStyle totalValue;
         final CellStyle dataCenter, dataLeft, signerLine, noBorder;
         final CellStyle signerRole, signerName, signerIn;
 
@@ -453,19 +405,28 @@ public class ApplicationExcelGenerator {
             yearMonth = plain(wb, true, 13);
             align(yearMonth, HorizontalAlignment.LEFT);
 
-            // 헤더: 줄바꿈 OFF, 중앙정렬
             header = bordered(wb, true, 9);
             align(header, HorizontalAlignment.CENTER);
             header.setWrapText(false);
             tint(header, (byte)217, (byte)217, (byte)217);
 
-            totalLabel = bordered(wb, true, 10);
+            totalLabel = bordered(wb, true, 11);
             align(totalLabel, HorizontalAlignment.CENTER);
             tint(totalLabel, (byte)230, (byte)230, (byte)230);
 
-            dataCenter = bordered(wb, false, 8);
+            totalValue = bordered(wb, true, 11);
+            align(totalValue, HorizontalAlignment.CENTER);
+            tint(totalValue, (byte)217, (byte)217, (byte)217);
+
+            dataCenter = bordered(wb, false, 11);
             align(dataCenter, HorizontalAlignment.CENTER);
-            // 날짜 컬럼 전용 스타일 추가
+            // 데이터 셀 폰트를 스케줄 인쇄 비율 기준으로 맞춤 (돋움 10pt)
+            XSSFFont dataFont = wb.createFont();
+            dataFont.setBold(false);
+            dataFont.setFontHeightInPoints((short) 10);
+            dataFont.setFontName("돋움");
+            ((XSSFCellStyle) dataCenter).setFont(dataFont);
+
             CellStyle dateStyle = wb.createCellStyle();
             dateStyle.cloneStyleFrom(dataCenter);
             dateStyle.setDataFormat(wb.createDataFormat().getFormat("m\"월\" d\"일\""));
@@ -491,11 +452,13 @@ public class ApplicationExcelGenerator {
             align(titleNoBorder, HorizontalAlignment.CENTER);
         }
 
-        private CellStyle bordered(XSSFWorkbook wb, boolean bold, int size) {
+        // ← setFontName("맑은 고딕") 추가
+        private static CellStyle bordered(XSSFWorkbook wb, boolean bold, int size) {
             XSSFCellStyle s = wb.createCellStyle();
             XSSFFont f = wb.createFont();
             f.setBold(bold);
             f.setFontHeightInPoints((short) size);
+            f.setFontName("맑은 고딕"); // ← 추가
             s.setFont(f);
             s.setVerticalAlignment(VerticalAlignment.CENTER);
             s.setBorderTop(BorderStyle.THIN);
@@ -505,20 +468,23 @@ public class ApplicationExcelGenerator {
             return s;
         }
 
-        private CellStyle plain(XSSFWorkbook wb, boolean bold, int size) {
+        // ← setFontName("맑은 고딕") 추가
+        private static CellStyle plain(XSSFWorkbook wb, boolean bold, int size) {
             XSSFCellStyle s = wb.createCellStyle();
             XSSFFont f = wb.createFont();
-            f.setBold(bold); f.setFontHeightInPoints((short) size);
+            f.setBold(bold);
+            f.setFontHeightInPoints((short) size);
+            f.setFontName("맑은 고딕"); // ← 추가
             s.setFont(f);
             s.setVerticalAlignment(VerticalAlignment.CENTER);
             return s;
         }
 
-        private void align(CellStyle s, HorizontalAlignment ha) {
+        private static void align(CellStyle s, HorizontalAlignment ha) {
             ((XSSFCellStyle) s).setAlignment(ha);
         }
 
-        private void tint(CellStyle s, byte r, byte g, byte b) {
+        private static void tint(CellStyle s, byte r, byte g, byte b) {
             ((XSSFCellStyle) s).setFillForegroundColor(
                     new XSSFColor(new byte[]{r, g, b}, null));
             s.setFillPattern(FillPatternType.SOLID_FOREGROUND);
@@ -537,11 +503,6 @@ public class ApplicationExcelGenerator {
         cell.setCellStyle(style);
     }
 
-    /**
-     * XSSFTextBox 내부 텍스트를 가로 중앙정렬.
-     * XSSFSimpleShape.setHorizontalAlignment() 은 POI 버전에 따라 없을 수 있으므로
-     * CTTextBody를 직접 조작한다.
-     */
     private void setCTTextCenter(XSSFTextBox box) {
         CTTextBody txBody = box.getCTShape().getTxBody();
         if (txBody == null) return;
