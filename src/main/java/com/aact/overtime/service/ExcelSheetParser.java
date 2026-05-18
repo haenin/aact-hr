@@ -3,27 +3,16 @@ package com.aact.overtime.service;
 import com.aact.overtime.dto.ExcelSheetDto;
 import com.aact.overtime.dto.ExcelSheetType;
 import org.apache.poi.ss.usermodel.*;
-import org.apache.poi.xssf.usermodel.XSSFWorkbook;
+import org.apache.poi.xssf.usermodel.*;
 import org.springframework.stereotype.Component;
 
 import java.io.InputStream;
 import java.util.ArrayList;
 import java.util.List;
 
-/**
- * 시간외근무수당 엑셀 파일을 SheetDto 배열로 파싱
- *
- * 반환 구조:
- * List<SheetDto.SheetWrapper<?>>
- *  ├── isCover=true  → data: List<CoverRow>
- *  └── isCover=false → data: List<DetailRow>
- */
 @Component
 public class ExcelSheetParser {
 
-    /**
-     * 엑셀 파일 전체를 시트 배열로 변환
-     */
     @SuppressWarnings("unchecked")
     public List<ExcelSheetDto.SheetWrapper<?>> parse(InputStream is) throws Exception {
         List<ExcelSheetDto.SheetWrapper<?>> result = new ArrayList<>();
@@ -34,23 +23,27 @@ public class ExcelSheetParser {
                 String sheetName = sheet.getSheetName();
 
                 boolean isCover = sheetName.contains("표지");
-                ExcelSheetType type  = ExcelSheetType.from(sheetName);
+                ExcelSheetType type = ExcelSheetType.from(sheetName);
 
                 if (isCover) {
                     List<ExcelSheetDto.CoverRow> data = parseCoverSheet(sheet);
+                    List<String> approvers = parseApprovers(sheet);
                     result.add(ExcelSheetDto.SheetWrapper.<ExcelSheetDto.CoverRow>builder()
                             .sheetName(sheetName)
                             .isCover(true)
                             .type(type)
                             .data(data)
+                            .approvers(approvers)
                             .build());
                 } else {
                     List<ExcelSheetDto.DetailRow> data = parseDetailSheet(sheet);
+                    List<String> approvers = parseApprovers(sheet);
                     result.add(ExcelSheetDto.SheetWrapper.<ExcelSheetDto.DetailRow>builder()
                             .sheetName(sheetName)
                             .isCover(false)
                             .type(type)
                             .data(data)
+                            .approvers(approvers)
                             .build());
                 }
             }
@@ -59,9 +52,30 @@ public class ExcelSheetParser {
     }
 
     // ────────────────────────────────────────────────────────────
+    // 결재란 파싱 (Drawing 텍스트박스)
+    // ────────────────────────────────────────────────────────────
+    private List<String> parseApprovers(Sheet sheet) {
+        List<String> approvers = new ArrayList<>();
+        if (!(sheet instanceof XSSFSheet xssfSheet)) return approvers;
+
+        XSSFDrawing drawing = xssfSheet.getDrawingPatriarch();
+        if (drawing == null) return approvers;
+
+        for (XSSFShape shape : drawing.getShapes()) {
+            // XSSFTextBox → 저장 후 재파싱하면 XSSFSimpleShape으로 역직렬화됨
+            if (shape instanceof XSSFSimpleShape simpleShape) {
+                try {
+                    String text = simpleShape.getText().trim();
+                    if (!text.isBlank()) {
+                        approvers.add(text);
+                    }
+                } catch (Exception ignored) {}
+            }
+        }
+        return approvers;
+    }
+    // ────────────────────────────────────────────────────────────
     // 표지 시트 파싱
-    // 부서명 / 전월(연장·야간·휴일) / 당월(연장·야간·휴일) / 증감 / 사유
-    // 실제 데이터 행: "총 합계" 위의 부서명 행들
     // ────────────────────────────────────────────────────────────
     private List<ExcelSheetDto.CoverRow> parseCoverSheet(Sheet sheet) {
         List<ExcelSheetDto.CoverRow> rows = new ArrayList<>();
@@ -70,18 +84,13 @@ public class ExcelSheetParser {
         for (Row row : sheet) {
             String firstCell = strVal(row.getCell(0));
 
-            // "부서명" 헤더 다음 행부터 데이터
             if ("부서명".equals(firstCell)) {
                 dataStarted = true;
                 continue;
             }
             if (!dataStarted) continue;
-
-            // 빈 행 또는 서명 구간 스킵
             if (firstCell == null || firstCell.isBlank()) continue;
             if (firstCell.contains("상기와") || firstCell.contains("에이에이씨티")) break;
-
-            // 헤더 보조행 ("연장","야간","휴일" 반복) 스킵
             if ("연장".equals(firstCell) || "야간".equals(firstCell) || "휴일".equals(firstCell)) continue;
 
             rows.add(ExcelSheetDto.CoverRow.builder()
@@ -92,7 +101,6 @@ public class ExcelSheetParser {
                     .currExtension(numVal(row.getCell(4)))
                     .currNight(numVal(row.getCell(5)))
                     .currHoliday(numVal(row.getCell(6)))
-                    // 증감은 수식 결과 or 직접 계산
                     .diffExtension(diff(numVal(row.getCell(4)), numVal(row.getCell(1))))
                     .diffNight(diff(numVal(row.getCell(5)), numVal(row.getCell(2))))
                     .diffHoliday(diff(numVal(row.getCell(6)), numVal(row.getCell(3))))
@@ -104,7 +112,6 @@ public class ExcelSheetParser {
 
     // ────────────────────────────────────────────────────────────
     // 세부내역 시트 파싱
-    // 부서 / 성명 / 일자 / 예정출근·퇴근 / 실출근·퇴근 / 연장·야간·휴일·휴일연장
     // ────────────────────────────────────────────────────────────
     private List<ExcelSheetDto.DetailRow> parseDetailSheet(Sheet sheet) {
         List<ExcelSheetDto.DetailRow> rows = new ArrayList<>();
@@ -114,21 +121,17 @@ public class ExcelSheetParser {
         String currentName = null;
 
         for (Row row : sheet) {
-            String col0 = strVal(row.getCell(0)); // 부서
-            String col1 = strVal(row.getCell(1)); // 성명
-            String col2 = strVal(row.getCell(2)); // 일자
+            String col0 = strVal(row.getCell(0));
+            String col1 = strVal(row.getCell(1));
+            String col2 = strVal(row.getCell(2));
 
-            // "부서" 헤더 행 다음부터 데이터
             if ("부서".equals(col0)) {
                 dataStarted = true;
                 continue;
             }
             if (!dataStarted) continue;
-
-            // 합계 행 스킵 (시트 끝)
             if (col1 != null && col1.contains("합계")) break;
 
-            // 소계 행
             if ("소계".equals(col1)) {
                 rows.add(ExcelSheetDto.DetailRow.builder()
                         .department(currentDept)
@@ -142,11 +145,8 @@ public class ExcelSheetParser {
                 continue;
             }
 
-            // 부서/성명 carry-forward (병합셀 대응)
             if (col0 != null && !col0.isBlank()) currentDept = col0;
             if (col1 != null && !col1.isBlank()) currentName = col1;
-
-            // 일자가 없으면 빈 행
             if (col2 == null || col2.isBlank()) continue;
 
             rows.add(ExcelSheetDto.DetailRow.builder()
@@ -166,8 +166,6 @@ public class ExcelSheetParser {
         }
         return rows;
     }
-
-    // ─── 셀 값 추출 유틸 ───────────────────────────────────────
 
     private String strVal(Cell cell) {
         if (cell == null) return null;

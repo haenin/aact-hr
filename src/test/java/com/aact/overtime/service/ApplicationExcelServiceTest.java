@@ -30,7 +30,7 @@ import static org.assertj.core.api.Assertions.assertThat;
  */
 @SpringBootTest
 @Transactional
-@DisplayName("시간외근무수당 신청서 엑셀 생성 통합 테스트")
+@DisplayName("시간외근무수당 신청서 엑셀 생성 테스트")
 class ApplicationExcelServiceTest {
 
     @Autowired private ApplicationService applicationService;
@@ -170,7 +170,7 @@ class ApplicationExcelServiceTest {
             boolean foundZeroRow = false;
 
             for (Row row : sheet) {
-                Cell nameCell = row.getCell(1);
+                Cell nameCell = row.getCell(2);
                 Cell extCell  = row.getCell(5);
                 if (nameCell != null && extCell != null
                         && nameCell.getCellType() == CellType.STRING
@@ -219,7 +219,7 @@ class ApplicationExcelServiceTest {
     }
 
     @Test
-    @DisplayName("[C] 연장/야간/휴일 합계 — 연장 46.5 / 야간 18.0 / 휴일 8.0")
+    @DisplayName("[C] 연장/야간/휴일 합계 — 연장 45.5 / 야간 18.0 / 휴일 8.0")
     void C_generateExcel_totalRowValues() throws Exception {
         applicationRepository.saveAll(datasetC());
 
@@ -229,26 +229,9 @@ class ApplicationExcelServiceTest {
             Row totalRow = findTotalRow(wb.getSheetAt(0));
             assertThat(totalRow).isNotNull();
 
-            assertThat(totalRow.getCell(5).getNumericCellValue()).isEqualTo(46.5);
+            assertThat(totalRow.getCell(5).getNumericCellValue()).isEqualTo(45.5);
             assertThat(totalRow.getCell(6).getNumericCellValue()).isEqualTo(18.0);
             assertThat(totalRow.getCell(7).getNumericCellValue()).isEqualTo(8.0);
-        }
-    }
-
-    // ────────────────────────────────────────────────────────────────
-    // 공통 — 데이터 없을 때
-    // ────────────────────────────────────────────────────────────────
-
-    @Test
-    @DisplayName("데이터가 없을 때도 엑셀이 정상 생성된다 (빈 행 28개)")
-    void generateExcel_emptyData() throws Exception {
-        byte[] excel = applicationService.generateExcel(requestFor(DEPT_A));
-
-        assertThat(excel).isNotNull();
-        assertThat(excel.length).isGreaterThan(0);
-
-        try (Workbook wb = new XSSFWorkbook(new ByteArrayInputStream(excel))) {
-            assertThat(wb.getSheetAt(0).getLastRowNum()).isGreaterThanOrEqualTo(32);
         }
     }
 

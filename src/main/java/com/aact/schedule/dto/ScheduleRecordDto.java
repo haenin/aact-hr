@@ -57,4 +57,18 @@ public class ScheduleRecordDto {
         private String status;             // 확정 상태 ex) "확정", "임시"
         private List<String> approvers;    // 결재자 목록 ex) ["부장", "상무"] (동적)
     }
+
+    @Builder
+    @Getter
+    public static class ParsedRow {
+        private String applyYearMonth;
+        private String department;
+        private int seq;
+        private String employeeName;
+        private List<String> days;       // 1일~31일 값
+        private String offDays;
+        private String usedOff;
+        private String usedAnnual;
+        private String remainAnnual;
+    }
 }

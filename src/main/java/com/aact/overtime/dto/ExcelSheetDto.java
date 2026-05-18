@@ -110,5 +110,6 @@ public class ExcelSheetDto {
         private boolean isCover;
         private ExcelSheetType type;
         private List<T> data;
+        private List<String> approvers;
     }
 }

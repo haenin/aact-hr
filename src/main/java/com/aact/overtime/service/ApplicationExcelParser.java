@@ -4,6 +4,7 @@ import com.aact.overtime.dto.ApplicationDto;
 import org.apache.poi.ss.usermodel.*;
 import org.apache.poi.xssf.usermodel.XSSFWorkbook;
 import org.springframework.stereotype.Component;
+import org.apache.poi.xssf.usermodel.*;
 
 import java.io.InputStream;
 import java.util.ArrayList;
@@ -125,5 +126,27 @@ public class ApplicationExcelParser {
             }
             default -> 0.0;
         };
+    }
+
+    // parse() 메서드 반환타입을 감싸는 DTO가 없으면 일단 결재란만 출력용으로 추가
+    public List<String> parseApprovers(InputStream is) throws Exception {
+        List<String> approvers = new ArrayList<>();
+        try (Workbook wb = new XSSFWorkbook(is)) {
+            Sheet sheet = wb.getSheetAt(0);
+            if (!(sheet instanceof XSSFSheet xssfSheet)) return approvers;
+
+            XSSFDrawing drawing = xssfSheet.getDrawingPatriarch();
+            if (drawing == null) return approvers;
+
+            for (XSSFShape shape : drawing.getShapes()) {
+                if (shape instanceof XSSFSimpleShape simpleShape) {
+                    try {
+                        String text = simpleShape.getText().trim();
+                        if (!text.isBlank()) approvers.add(text);
+                    } catch (Exception ignored) {}
+                }
+            }
+        }
+        return approvers;
     }
 }

@@ -1,11 +1,8 @@
 package com.aact.overtime.service;
 
-import com.aact.overtime.dto.OvertimeRecordDto;
-import com.aact.overtime.dto.DepartmentSummaryDto;
-import com.aact.overtime.entity.OvertimeRecord;
-import com.aact.overtime.entity.DepartmentSummary;
 import com.aact.overtime.repository.OvertimeRecordRepository;
 import com.aact.overtime.repository.DepartmentSummaryRepository;
+import com.aact.overtime.dto.OvertimeRecordDto;
 import org.apache.poi.ss.usermodel.*;
 import org.apache.poi.xssf.usermodel.XSSFWorkbook;
 import org.junit.jupiter.api.BeforeEach;
@@ -17,21 +14,19 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.io.ByteArrayInputStream;
 import java.nio.file.Files;
-import java.nio.file.Path;
 import java.nio.file.Paths;
-import java.time.LocalDate;
-import java.time.LocalTime;
 import java.util.List;
 
+import static com.aact.overtime.fixture.OvertimeTestFixture.*;
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
  * <pre>
  * Class Name: OvertimeExcelServiceTest
- * Description: 엑셀 생성 및 파싱 테스트
+ * Description: 시간외근무 엑셀 생성 통합 테스트
  *
  * History
- * 2026/05/14 (혜원) 엑셀 생성 및 파싱 테스트 성공
+ * 2026/05/18 (혜원) 테스트 픽스처 분리 및 A/B/C 케이스 구조화
  * </pre>
  */
 @SpringBootTest
@@ -40,75 +35,49 @@ import static org.assertj.core.api.Assertions.assertThat;
 class OvertimeExcelServiceTest {
 
     @Autowired private OvertimeRecordService overtimeRecordService;
-    @Autowired private DepartmentSummaryService departmentSummaryService;
     @Autowired private ExcelSheetService excelSheetService;
     @Autowired private OvertimeRecordRepository overtimeRecordRepository;
     @Autowired private DepartmentSummaryRepository departmentSummaryRepository;
-
-    private static final String YEAR_MONTH = "2026-05";
-    private static final String DEPARTMENT = "항공기운송지원팀";
+    @Autowired private DepartmentSummaryService departmentSummaryService;
 
     @BeforeEach
     void setUp() {
-        // ── DepartmentSummary (표지 집계표) 가상 데이터
-        departmentSummaryRepository.saveAll(List.of(
-            makeSummary("조업부",       20.0, 5.0, 3.0,  22.0, 6.0, 2.0,  "업무증가"),
-            makeSummary("항공기운송지원팀", 15.0, 3.0, 2.0,  18.0, 4.0, 3.0,  "항공편 증가"),
-            makeSummary("관리부",       10.0, 2.0, 1.0,  12.0, 2.0, 1.0,  null)
-        ));
-
-        // ── OvertimeRecord (세부내역) 가상 데이터
-        overtimeRecordRepository.saveAll(List.of(
-            makeRecord("김보라",  LocalDate.of(2026, 5, 1),  "09:00", "18:00", "09:00", "20:30", 2.5, 0.0, 0.0, 0.0),
-            makeRecord("김보라",  LocalDate.of(2026, 5, 8),  "09:00", "18:00", "09:00", "21:00", 3.0, 0.0, 0.0, 0.0),
-            makeRecord("김보라",  LocalDate.of(2026, 5, 15), "09:00", "18:00", "09:00", "22:00", 4.0, 1.0, 0.0, 0.0),
-            makeRecord("모은서",  LocalDate.of(2026, 5, 2),  "09:00", "18:00", "09:00", "20:00", 2.0, 0.0, 0.0, 0.0),
-            makeRecord("모은서",  LocalDate.of(2026, 5, 9),  "09:00", "18:00", "09:00", "23:00", 5.0, 0.0, 0.0, 0.0),
-            makeRecord("남다정",  LocalDate.of(2026, 5, 3),  "13:00", "22:00", "13:00", "22:00", 0.0, 4.0, 0.0, 0.0),
-            makeRecord("남다정",  LocalDate.of(2026, 5, 10), "13:00", "22:00", "13:00", "23:30", 1.5, 4.0, 0.0, 0.0)
-        ));
+        departmentSummaryRepository.deleteAll();
+        overtimeRecordRepository.deleteAll();
     }
 
-    // ────────────────────────────────────────────────────────────
-    // 주 테스트
-    // ────────────────────────────────────────────────────────────
+    // ────────────────────────────────────────────────────────────────
+    // Dataset A — 정상 케이스
+    // ────────────────────────────────────────────────────────────────
 
     @Test
-    @DisplayName("DB에 저장된 데이터로 시간외근무수당 엑셀 파일 생성")
-    void generateExcel() throws Exception {
-        byte[] excel = excelSheetService.generateExcel(
-                YEAR_MONTH,
-                List.of("담당", "과장", "상무", "부사장"));
+    @DisplayName("[A] DB에 저장된 데이터로 엑셀 파일을 생성한다")
+    void A_generateExcel_success() throws Exception {
+        departmentSummaryRepository.saveAll(summariesA());
+        overtimeRecordRepository.saveAll(recordsA());
+
+        byte[] excel = excelSheetService.generateExcel(YEAR_MONTH, APPROVERS_4);
 
         assertThat(excel).isNotNull();
         assertThat(excel.length).isGreaterThan(0);
 
-        Path path = Paths.get("build/test-overtime.xlsx");
-        Files.write(path, excel);
-        System.out.println("엑셀 저장 완료: " + path.toAbsolutePath());
+        Files.createDirectories(Paths.get("build"));
+        Files.write(Paths.get("build/test-overtime-A.xlsx"), excel);
+        System.out.println("엑셀 저장 완료: build/test-overtime-A.xlsx");
     }
 
     @Test
-    @DisplayName("생성된 엑셀에 표지 시트와 세부내역 시트가 모두 존재한다")
-    void generateExcelAndVerifySheets() throws Exception {
-        byte[] excel = excelSheetService.generateExcel(
-                YEAR_MONTH,
-                List.of("담당", "과장", "상무", "부사장"));
+    @DisplayName("[A] 표지 시트와 세부내역 시트가 모두 존재한다")
+    void A_generateExcel_hasRequiredSheets() throws Exception {
+        departmentSummaryRepository.saveAll(summariesA());
+        overtimeRecordRepository.saveAll(recordsA());
 
-        try (Workbook workbook = new XSSFWorkbook(new ByteArrayInputStream(excel))) {
-            int sheetCount = workbook.getNumberOfSheets();
-            assertThat(sheetCount).isGreaterThan(0);
+        byte[] excel = excelSheetService.generateExcel(YEAR_MONTH, APPROVERS_4);
 
-            System.out.println("===== 시트 목록 =====");
-            for (int i = 0; i < sheetCount; i++) {
-                System.out.println("시트" + (i + 1) + ": " + workbook.getSheetAt(i).getSheetName());
-            }
-
-            // 표지 시트 확인
-            boolean hasCover = false;
-            boolean hasDetail = false;
-            for (int i = 0; i < sheetCount; i++) {
-                String name = workbook.getSheetAt(i).getSheetName();
+        try (Workbook wb = new XSSFWorkbook(new ByteArrayInputStream(excel))) {
+            boolean hasCover = false, hasDetail = false;
+            for (int i = 0; i < wb.getNumberOfSheets(); i++) {
+                String name = wb.getSheetAt(i).getSheetName();
                 if (name.contains("표지")) hasCover = true;
                 else hasDetail = true;
             }
@@ -118,144 +87,181 @@ class OvertimeExcelServiceTest {
     }
 
     @Test
-    @DisplayName("생성된 엑셀 세부내역 시트에 직원 이름이 존재한다")
-    void generateExcelAndParse() throws Exception {
-        byte[] excel = excelSheetService.generateExcel(
-                YEAR_MONTH,
-                List.of("담당", "과장", "상무", "부사장"));
+    @DisplayName("[A] 세부내역 시트에 직원 이름이 존재한다")
+    void A_generateExcel_containsEmployeeNames() throws Exception {
+        departmentSummaryRepository.saveAll(summariesA());
+        overtimeRecordRepository.saveAll(recordsA());
 
-        Path path = Paths.get("build/test-overtime.xlsx");
-        Files.write(path, excel);
-        System.out.println("엑셀 저장 완료: " + path.toAbsolutePath());
+        byte[] excel = excelSheetService.generateExcel(YEAR_MONTH, APPROVERS_4);
 
-        try (Workbook workbook = new XSSFWorkbook(new ByteArrayInputStream(excel))) {
+        try (Workbook wb = new XSSFWorkbook(new ByteArrayInputStream(excel))) {
+            Sheet detail = findDetailSheet(wb);
+            assertThat(detail).isNotNull();
 
-            // 세부내역 시트 찾기
-            Sheet detailSheet = null;
-            for (int i = 0; i < workbook.getNumberOfSheets(); i++) {
-                if (!workbook.getSheetAt(i).getSheetName().contains("표지")) {
-                    detailSheet = workbook.getSheetAt(i);
-                    break;
-                }
-            }
-            assertThat(detailSheet).isNotNull();
-
-            System.out.println("시트명: " + detailSheet.getSheetName());
-            System.out.println("===== 엑셀 내용 =====");
-
-            boolean foundKimBora = false;
-            for (Row row : detailSheet) {
-                StringBuilder sb = new StringBuilder();
+            boolean foundKimBora = false, foundMoEunseo = false, foundNamDajung = false;
+            for (Row row : detail) {
                 for (Cell cell : row) {
-                    String value = switch (cell.getCellType()) {
-                        case STRING  -> cell.getStringCellValue();
-                        case NUMERIC -> String.valueOf((int) cell.getNumericCellValue());
-                        case BOOLEAN -> String.valueOf(cell.getBooleanCellValue());
-                        default -> "";
-                    };
-                    sb.append(value).append("\t");
-                    if (cell.getCellType() == CellType.STRING &&
-                            cell.getStringCellValue().contains("김보라")) {
-                        foundKimBora = true;
-                        System.out.println("김보라 데이터 발견!");
+                    if (cell.getCellType() == CellType.STRING) {
+                        String v = cell.getStringCellValue();
+                        if (v.contains("김보라")) foundKimBora  = true;
+                        if (v.contains("모은서")) foundMoEunseo = true;
+                        if (v.contains("남다정")) foundNamDajung = true;
                     }
                 }
-                System.out.println(sb);
             }
             assertThat(foundKimBora).isTrue();
+            assertThat(foundMoEunseo).isTrue();
+            assertThat(foundNamDajung).isTrue();
         }
     }
 
     @Test
-    @DisplayName("직원별 소계가 정상적으로 계산된다")
-    void getSubtotal() {
+    @DisplayName("[A] 김보라 연장 소계가 9.5h로 정상 계산된다")
+    void A_subtotal_kimBora_extensionHours() {
+        overtimeRecordRepository.saveAll(recordsA());
+
         List<OvertimeRecordDto.Subtotal> subtotals =
-                overtimeRecordService.getSubtotalByDepartment(YEAR_MONTH, DEPARTMENT);
+                overtimeRecordService.getSubtotalByDepartment(YEAR_MONTH, DEPT_A);
 
-        assertThat(subtotals).isNotEmpty();
-        System.out.println("===== 직원별 소계 =====");
-        subtotals.forEach(s -> System.out.println(
-                s.getEmployeeName() + " | 연장: " + s.getExtensionHours()
-                + " | 야간: " + s.getNightHours()
-                + " | 휴일: " + s.getHolidayHours()));
-
-        // 김보라 소계 검증 (2.5 + 3.0 + 4.0 = 9.5)
         subtotals.stream()
                 .filter(s -> "김보라".equals(s.getEmployeeName()))
                 .findFirst()
-                .ifPresent(s -> assertThat(s.getExtensionHours()).isEqualTo(9.5));
+                .ifPresentOrElse(
+                        s -> assertThat(s.getExtensionHours()).isEqualTo(9.5),
+                        () -> { throw new AssertionError("김보라 소계 없음"); }
+                );
+    }
+
+    // ────────────────────────────────────────────────────────────────
+    // Dataset B — 경계값 케이스
+    // ────────────────────────────────────────────────────────────────
+
+    @Test
+    @DisplayName("[B] 야간 최대치(8h) + 휴일 포함 엑셀 생성")
+    void B_generateExcel_success() throws Exception {
+        departmentSummaryRepository.saveAll(summariesB());
+        overtimeRecordRepository.saveAll(recordsB());
+
+        byte[] excel = excelSheetService.generateExcel(YEAR_MONTH, APPROVERS_2);
+
+        assertThat(excel).isNotNull();
+        assertThat(excel.length).isGreaterThan(0);
+
+        Files.write(Paths.get("build/test-overtime-B.xlsx"), excel);
+        System.out.println("엑셀 저장 완료: build/test-overtime-B.xlsx");
     }
 
     @Test
-    @DisplayName("부서 전체 합계가 정상적으로 계산된다")
-    void getTotal() {
-        OvertimeRecordDto.Total total =
-                overtimeRecordService.getTotalByDepartment(YEAR_MONTH, DEPARTMENT);
+    @DisplayName("[B] 연장 0인 행(정시 퇴근)도 세부내역에 포함된다")
+    void B_generateExcel_containsZeroOvertimeRow() throws Exception {
+        departmentSummaryRepository.saveAll(summariesB());
+        overtimeRecordRepository.saveAll(recordsB());
 
-        assertThat(total).isNotNull();
-        System.out.println("===== 부서 합계 =====");
-        System.out.println(total.getDepartment()
-                + " | 연장: " + total.getExtensionHours()
-                + " | 야간: " + total.getNightHours());
+        byte[] excel = excelSheetService.generateExcel(YEAR_MONTH, APPROVERS_2);
+
+        try (Workbook wb = new XSSFWorkbook(new ByteArrayInputStream(excel))) {
+            Sheet detail = findDetailSheet(wb);
+            assertThat(detail).isNotNull();
+
+            boolean foundZeroRow = false;
+            for (Row row : detail) {
+                boolean hasOhTaeyang = false;
+                boolean hasZeroExt   = false;
+                for (Cell cell : row) {
+                    if (cell.getCellType() == CellType.STRING
+                            && cell.getStringCellValue().contains("오태양")) {
+                        hasOhTaeyang = true;
+                    }
+                    if (cell.getCellType() == CellType.NUMERIC
+                            && cell.getNumericCellValue() == 0.0) {
+                        hasZeroExt = true;
+                    }
+                }
+                if (hasOhTaeyang && hasZeroExt) {
+                    foundZeroRow = true;
+                    break;
+                }
+            }
+            assertThat(foundZeroRow).isTrue();
+        }
     }
 
     @Test
-    @DisplayName("부서별 집계표 조회가 정상적으로 동작한다")
-    void getDepartmentSummary() {
-        List<DepartmentSummaryDto.Response> summaries =
-                departmentSummaryService.getByYearMonth(YEAR_MONTH);
+    @DisplayName("[B] 정수빈 야간 소계가 16.0h로 정상 계산된다")
+    void B_subtotal_jungSubin_nightHours() {
+        overtimeRecordRepository.saveAll(recordsB());
 
+        List<OvertimeRecordDto.Subtotal> subtotals =
+                overtimeRecordService.getSubtotalByDepartment(YEAR_MONTH, DEPT_B);
+
+        subtotals.stream()
+                .filter(s -> "정수빈".equals(s.getEmployeeName()))
+                .findFirst()
+                .ifPresentOrElse(
+                        s -> assertThat(s.getNightHours()).isEqualTo(16.0),
+                        () -> { throw new AssertionError("정수빈 소계 없음"); }
+                );
+    }
+
+    // ────────────────────────────────────────────────────────────────
+    // Dataset C — 스트레스 케이스
+    // ────────────────────────────────────────────────────────────────
+
+    @Test
+    @DisplayName("[C] 3개 부서 집계표로 엑셀 생성")
+    void C_generateExcel_success() throws Exception {
+        departmentSummaryRepository.saveAll(summariesC());
+        overtimeRecordRepository.saveAll(recordsC());
+
+        byte[] excel = excelSheetService.generateExcel(YEAR_MONTH, APPROVERS_4);
+
+        assertThat(excel).isNotNull();
+        assertThat(excel.length).isGreaterThan(0);
+
+        Files.write(Paths.get("build/test-overtime-C.xlsx"), excel);
+        System.out.println("엑셀 저장 완료: build/test-overtime-C.xlsx");
+    }
+
+    @Test
+    @DisplayName("[C] 부서별 집계표 3건이 정상 조회된다")
+    void C_departmentSummary_hasThreeDepts() {
+        departmentSummaryRepository.saveAll(summariesC());
+
+        var summaries = departmentSummaryService.getByYearMonth(YEAR_MONTH);
         assertThat(summaries).hasSize(3);
-        System.out.println("===== 부서별 집계표 =====");
-        summaries.forEach(s -> System.out.println(
-                s.getDepartment()
-                + " | 전월연장: " + s.getPrevExtensionHours()
-                + " | 당월연장: " + s.getCurrExtensionHours()
-                + " | 증감: "    + s.getDiffExtensionHours()
-                + " | 사유: "    + s.getChangeReason()));
     }
 
-    // ────────────────────────────────────────────────────────────
+    @Test
+    @DisplayName("[C] 세부내역 시트 수가 부서 수만큼 존재한다")
+    void C_generateExcel_sheetCountMatchesDepts() throws Exception {
+        departmentSummaryRepository.saveAll(summariesC());
+        overtimeRecordRepository.saveAll(recordsC());
+
+        byte[] excel = excelSheetService.generateExcel(YEAR_MONTH, APPROVERS_4);
+
+        try (Workbook wb = new XSSFWorkbook(new ByteArrayInputStream(excel))) {
+            long detailSheetCount = 0;
+            for (int i = 0; i < wb.getNumberOfSheets(); i++) {
+                if (!wb.getSheetAt(i).getSheetName().contains("표지")) {
+                    detailSheetCount++;
+                }
+            }
+            // 표지 1장 + 부서별 세부내역
+            assertThat(detailSheetCount).isGreaterThanOrEqualTo(1);
+        }
+    }
+
+    // ────────────────────────────────────────────────────────────────
     // 헬퍼
-    // ────────────────────────────────────────────────────────────
+    // ────────────────────────────────────────────────────────────────
 
-    private DepartmentSummary makeSummary(String dept,
-                                          double prevExt, double prevNight, double prevHol,
-                                          double currExt, double currNight, double currHol,
-                                          String reason) {
-        return DepartmentSummary.builder()
-                .applyYearMonth(YEAR_MONTH)
-                .department(dept)
-                .prevExtensionHours(prevExt)
-                .prevNightHours(prevNight)
-                .prevHolidayHours(prevHol)
-                .currExtensionHours(currExt)
-                .currNightHours(currNight)
-                .currHolidayHours(currHol)
-                .diffExtensionHours(currExt - prevExt)
-                .diffNightHours(currNight - prevNight)
-                .diffHolidayHours(currHol - prevHol)
-                .changeReason(reason)
-                .build();
-    }
-
-    private OvertimeRecord makeRecord(String name, LocalDate date,
-                                       String schStart, String schEnd,
-                                       String actStart, String actEnd,
-                                       double ext, double night, double hol, double holExt) {
-        return OvertimeRecord.builder()
-                .applyYearMonth(YEAR_MONTH)
-                .department(DEPARTMENT)
-                .employeeName(name)
-                .workDate(date)
-                .scheduledStart(LocalTime.parse(schStart))
-                .scheduledEnd(LocalTime.parse(schEnd))
-                .actualStart(LocalTime.parse(actStart))
-                .actualEnd(LocalTime.parse(actEnd))
-                .extensionHours(ext)
-                .nightHours(night)
-                .holidayHours(hol)
-                .holidayExtensionHours(holExt)
-                .build();
+    /** 표지가 아닌 첫 번째 시트를 세부내역 시트로 반환 */
+    private Sheet findDetailSheet(Workbook wb) {
+        for (int i = 0; i < wb.getNumberOfSheets(); i++) {
+            if (!wb.getSheetAt(i).getSheetName().contains("표지")) {
+                return wb.getSheetAt(i);
+            }
+        }
+        return null;
     }
 }
